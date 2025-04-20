@@ -1,0 +1,76 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env/
+.venv/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Logs
+logs/
+*.log
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# Project specific
+captures/
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.tflite
+models/*.pb
+models/*.trt
+
+# Except example models (if you want to include some example models)
+!models/example_*.pt
+
+# Temporary files
+temp/
+tmp/
+
+# Database
+*.db
+*.sqlite3
+
+# Media files (if they are large)
+# Uncomment if needed
+# *.jpg
+# *.jpeg
+# *.png
+# *.gif
+# *.mp4
+# *.avi 
