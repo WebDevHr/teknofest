@@ -54,6 +54,7 @@ models/*.onnx
 models/*.tflite
 models/*.pb
 models/*.trt
+shape_detection/
 
 # Except example models (if you want to include some example models)
 !models/example_*.pt
