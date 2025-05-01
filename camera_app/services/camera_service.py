@@ -9,6 +9,7 @@ Service for handling camera operations.
 
 import cv2
 import os
+import time
 from datetime import datetime
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from PyQt5.QtGui import QImage
@@ -30,6 +31,12 @@ class CameraService(QObject):
         self.capture = None
         self.timer = None
         self.is_running = False
+        
+        # FPS calculation variables
+        self.prev_frame_time = 0
+        self.curr_frame_time = 0
+        self.fps = 0
+        self.show_fps = True
         
     def initialize(self):
         """Initialize the camera."""
@@ -77,6 +84,30 @@ class CameraService(QObject):
             self.capture = None
             self.logger.info("Camera resources released")
     
+    def _calculate_fps(self):
+        """Calculate the current FPS."""
+        self.curr_frame_time = time.time()
+        # Calculate FPS only if we have a previous frame time
+        if self.prev_frame_time > 0:
+            # Calculate time difference between current and previous frame
+            time_diff = self.curr_frame_time - self.prev_frame_time
+            # Calculate FPS
+            if time_diff > 0:
+                self.fps = 1 / time_diff
+        # Update previous frame time
+        self.prev_frame_time = self.curr_frame_time
+    
+    def _draw_fps(self, frame):
+        """Draw FPS counter on the frame."""
+        if self.show_fps:
+            # Format the FPS text
+            fps_text = f"FPS: {self.fps:.1f}"
+            # Draw a background rectangle for better visibility
+            cv2.rectangle(frame, (10, 10), (150, 40), (0, 0, 0), -1)
+            # Draw the FPS text
+            cv2.putText(frame, fps_text, (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        return frame
+    
     def _process_frame(self):
         """Process a frame from the camera."""
         if not self.capture or not self.capture.isOpened():
@@ -86,6 +117,9 @@ class CameraService(QObject):
             
         ret, frame = self.capture.read()
         if ret:
+            # Calculate FPS
+            self._calculate_fps()
+            
             # Kare sayacını artır
             if not hasattr(self, 'frame_count'):
                 self.frame_count = 0
@@ -116,6 +150,9 @@ class CameraService(QObject):
                 # Tespitleri çiz
                 frame = self.roboflow_service.draw_detections(frame, detections)
             
+            # Draw FPS counter (after all processing)
+            frame = self._draw_fps(frame)
+            
             # Convert the frame to RGB format
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
@@ -130,6 +167,12 @@ class CameraService(QObject):
             self.frame_ready.emit(q_image)
         else:
             self.camera_error.emit("Error capturing frame")
+    
+    def toggle_fps_display(self):
+        """Toggle the display of FPS counter."""
+        self.show_fps = not self.show_fps
+        self.logger.info(f"FPS display {'enabled' if self.show_fps else 'disabled'}")
+        return self.show_fps
     
     def capture_image(self, directory="captures"):
         """Capture and save the current frame."""

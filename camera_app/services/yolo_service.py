@@ -22,7 +22,7 @@ class YoloService(QObject):
     # Signals
     detection_ready = pyqtSignal(object, list)  # frame, detections
     
-    def __init__(self, model_path="C:\\Users\\USER\\Desktop\\pyqt\\camera_app\\models\\best(v8n).pt"):
+    def __init__(self, model_path="C:\\Users\\USER\\Desktop\\pyqt\\camera_app\\models\\bests_balloon_30_dark.pt"):
         super().__init__()
         self.logger = LoggerService()
         self.model_path = model_path
@@ -128,7 +128,43 @@ class YoloService(QObject):
         return detections
     
     def draw_detections(self, frame, detections):
-        """Draw detection boxes on the frame."""
+        """Draw detection boxes on the frame and apply opacity mask."""
+        # If no detections, return the original frame without any overlay
+        if not detections:
+            return frame
+            
+        # Create a black mask for the entire frame (for opacity overlay)
+        height, width = frame.shape[:2]
+        mask = np.zeros((height, width), dtype=np.uint8)
+        
+        # Mark balloon regions in the mask
+        for detection in detections:
+            x, y, w, h, confidence, class_id = detection
+            
+            # Ensure coordinates are within frame boundaries
+            x = max(0, x)
+            y = max(0, y)
+            x2 = min(width, x + w)
+            y2 = min(height, y + h)
+            
+            # Check if this is a balloon class
+            class_name = "unknown"
+            if class_id < len(self.class_names):
+                class_name = self.class_names[class_id]
+            
+            # Mark all detected regions in the mask, not just balloons
+            mask[y:y2, x:x2] = 255
+        
+        # Create a semi-transparent black overlay
+        overlay = frame.copy()
+        # Apply black color on the regions that are not inside bounding boxes (where mask is 0)
+        overlay[mask == 0] = [0, 0, 0]  # Black color
+        
+        # Blend the original frame with the overlay
+        alpha = 0.2  # 20% of original image (80% opacity for black overlay)
+        frame = cv2.addWeighted(overlay, 1-alpha, frame, alpha, 0)
+        
+        # Now draw boxes and labels on the frame
         for detection in detections:
             x, y, w, h, confidence, class_id = detection
             

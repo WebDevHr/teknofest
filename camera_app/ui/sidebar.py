@@ -110,6 +110,7 @@ class MenuSidebar(Sidebar):
         self.yolo_button = QPushButton("YOLO Detection")
         self.shape_button = QPushButton("Shape Detection")
         self.roboflow_button = QPushButton("Roboflow Detection")
+        self.fps_button = QPushButton("Show FPS")
         self.exit_button = QPushButton("Exit")
         
         # Set toggle button style for detection buttons
@@ -141,5 +142,6 @@ class MenuSidebar(Sidebar):
         self.add_widget(self.yolo_button)
         self.add_widget(self.shape_button)
         self.add_widget(self.roboflow_button)
+        self.add_widget(self.fps_button)
         self.add_widget(self.exit_button)
         self.add_stretch() 

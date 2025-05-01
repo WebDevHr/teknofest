@@ -80,6 +80,7 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.yolo_button.clicked.connect(self.on_yolo_clicked)
         self.menu_sidebar.shape_button.clicked.connect(self.on_shape_clicked)
         self.menu_sidebar.roboflow_button.clicked.connect(self.on_roboflow_clicked)
+        self.menu_sidebar.fps_button.clicked.connect(self.on_fps_clicked)
         self.menu_sidebar.exit_button.clicked.connect(self.close)
         
         # Add widgets to main layout
@@ -232,7 +233,7 @@ class MainWindow(QMainWindow):
     
     def init_yolo(self):
         """Initialize the YOLO service."""
-        model_path = "C:\\Users\\USER\\Desktop\\pyqt\\camera_app\\models\\best(v8n).pt"
+        model_path = "C:\\Users\\USER\\Desktop\\pyqt\\camera_app\\models\\bests_balloon_30_dark.pt"
         self.yolo_service = YoloService(model_path)
         
         # YOLO servisini kamera servisine bağla
@@ -330,4 +331,12 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'roboflow_service'):
                 self.roboflow_service.stop()
                 self.logger.info("Roboflow detection stopped")
-            button.setText("Roboflow Detection") 
+            button.setText("Roboflow Detection")
+    
+    def on_fps_clicked(self):
+        """Handle FPS button click."""
+        if hasattr(self, 'camera_service'):
+            is_showing = self.camera_service.toggle_fps_display()
+            button_text = "Hide FPS" if is_showing else "Show FPS"
+            self.menu_sidebar.fps_button.setText(button_text)
+            self.logger.info(f"FPS display {'enabled' if is_showing else 'disabled'}") 
