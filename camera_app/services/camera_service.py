@@ -99,13 +99,9 @@ class CameraService(QObject):
     
     def _draw_fps(self, frame):
         """Draw FPS counter on the frame."""
-        if self.show_fps:
-            # Format the FPS text
-            fps_text = f"FPS: {self.fps:.1f}"
-            # Draw a background rectangle for better visibility
-            cv2.rectangle(frame, (10, 10), (150, 40), (0, 0, 0), -1)
-            # Draw the FPS text
-            cv2.putText(frame, fps_text, (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        # This function no longer displays FPS on the frame
+        # FPS is now displayed on the main window instead
+        # We keep this method for compatibility
         return frame
     
     def _process_frame(self):
@@ -212,4 +208,26 @@ class CameraService(QObject):
     def set_roboflow_service(self, roboflow_service):
         """Set the Roboflow service for object detection."""
         self.roboflow_service = roboflow_service
-        self.logger.info("Roboflow service connected to camera") 
+        self.logger.info("Roboflow service connected to camera")
+    
+    def save_current_frame(self, filename):
+        """Save the current frame to the specified file."""
+        if not self.capture or not self.capture.isOpened():
+            self.logger.error("Cannot save: Camera not available")
+            return False
+            
+        # Ensure directory exists
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory)
+            
+        # Capture frame
+        ret, frame = self.capture.read()
+        if ret:
+            # Save the image
+            cv2.imwrite(filename, frame)
+            self.logger.info(f"Current frame saved as {filename}")
+            return True
+        else:
+            self.logger.error("Failed to save current frame")
+            return False 

@@ -25,18 +25,12 @@ class ShapeDetectionService(QObject):
         super().__init__()
         self.logger = LoggerService()
         self.is_running = False
-        self.output_dir = "white_detection"
         
         # FPS calculation variables
         self.prev_frame_time = 0
         self.curr_frame_time = 0
         self.fps = 0
         
-        # Create output directory if it doesn't exist
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-            self.logger.info(f"Created output directory: {self.output_dir}")
-    
     def start(self):
         """Start the white area detection service."""
         self.is_running = True
@@ -70,12 +64,7 @@ class ShapeDetectionService(QObject):
             self.prev_frame_time = self.curr_frame_time
             
             # Detect white areas in the frame
-            white_regions = self.detect_white_areas(frame)
-            
-            # Save a snapshot periodically if needed
-            if frame_count % 30 == 0:  # Save every 30 frames
-                snapshot_path = os.path.join(self.output_dir, f"snapshot_{frame_count}.jpg")
-                cv2.imwrite(snapshot_path, self.processed_frame)
+            white_regions = self.detect_white_balloons(frame)
             
             return white_regions
             
@@ -83,16 +72,16 @@ class ShapeDetectionService(QObject):
             self.logger.error(f"Error during white area detection: {str(e)}")
             return []
     
-    def detect_white_areas(self, image):
+    def detect_white_balloons(self, image):
         """
-        Detect circular white areas in an image with improved noise filtering
-        and better handling of interior black regions.
+        Detect white balloons in an image using K-means clustering to handle
+        different shades of white including shadowy parts.
         
         Args:
             image: OpenCV image (BGR format)
             
         Returns:
-            List of contours representing circular white areas
+            List of contours representing circular white areas (balloons)
         """
         # Create a copy for drawing results
         display_frame = image.copy()
@@ -103,22 +92,46 @@ class ShapeDetectionService(QObject):
         # Apply bilateral filter to reduce noise while preserving edges
         filtered = cv2.bilateralFilter(image, 9, 75, 75)
         
-        # Convert to HSV for better color thresholding
-        hsv = cv2.cvtColor(filtered, cv2.COLOR_BGR2HSV)
+        # Convert to LAB color space which is better for color clustering
+        lab_image = cv2.cvtColor(filtered, cv2.COLOR_BGR2LAB)
         
-        # Define range for white color in HSV
-        # Using a broader range to account for lighting variations
-        lower_white = np.array([0, 0, 180])  # Lower value threshold to capture more whites
-        upper_white = np.array([180, 30, 255])  # Higher saturation to include slightly off-white areas
+        # Reshape the image for K-means
+        pixels = lab_image.reshape((-1, 3))
+        pixels = np.float32(pixels)
         
-        # Threshold the HSV image to get only white colors
-        white_mask = cv2.inRange(hsv, lower_white, upper_white)
+        # Define criteria for K-means
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
+        k = 5  # Number of clusters (adjust as needed)
         
-        # Apply Gaussian blur to reduce noise
-        white_mask = cv2.GaussianBlur(white_mask, (5, 5), 0)
+        # Apply K-means clustering
+        _, labels, centers = cv2.kmeans(pixels, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
         
-        # Re-threshold to get a cleaner binary image
-        _, white_mask = cv2.threshold(white_mask, 127, 255, cv2.THRESH_BINARY)
+        # Convert back to 8-bit values
+        centers = np.uint8(centers)
+        
+        # Reshape labels to the original image shape
+        labels_reshaped = labels.reshape(image.shape[:2])
+        
+        # Find the whitest cluster
+        # In LAB, L is lightness (0-100), higher values are closer to white
+        whitest_cluster = np.argmax(centers[:, 0])
+        
+        # Find the second whitest cluster (for shadowy parts)
+        sorted_indices = np.argsort(centers[:, 0])
+        second_whitest = sorted_indices[-2]
+        
+        # Create a mask for both the whitest and second whitest clusters
+        white_mask = np.zeros(image.shape[:2], dtype=np.uint8)
+        white_mask[labels_reshaped == whitest_cluster] = 255
+        
+        # Add the second whitest cluster if it's sufficiently light
+        if centers[second_whitest, 0] > 150:  # Threshold for considering it part of white
+            white_mask[labels_reshaped == second_whitest] = 255
+        
+        # Apply morphological operations to clean the mask
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
         
         # Find contours in the white mask
         white_contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -139,7 +152,7 @@ class ShapeDetectionService(QObject):
                 white_regions.append(contour)
                 
                 # Check if shape is circular (circularity close to 1.0)
-                if circularity > 0.7:  # Threshold for circularity (adjust as needed)
+                if circularity > 0.6:  # Slightly lower threshold for circularity to catch more balloons
                     circular_regions.append(contour)
                     
                     # Draw the circular contour on the display frame
@@ -155,9 +168,9 @@ class ShapeDetectionService(QObject):
                     if M["m00"] != 0:
                         cx = int(M["m10"] / M["m00"])
                         cy = int(M["m01"] / M["m00"])
-                        cv2.putText(display_frame, f"Circle ({circularity:.2f})", (cx - 50, cy), 
+                        cv2.putText(display_frame, f"Balloon ({circularity:.2f})", (cx - 70, cy), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                        cv2.putText(output_frame, f"Circle ({circularity:.2f})", (cx - 50, cy), 
+                        cv2.putText(output_frame, f"Balloon ({circularity:.2f})", (cx - 70, cy), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 else:
                     # Draw non-circular contours in a different color
@@ -172,7 +185,7 @@ class ShapeDetectionService(QObject):
         mask = white_mask > 0
         display_frame[mask] = cv2.addWeighted(image[mask], 1 - alpha, overlay[mask], alpha, 0)
         
-        # Also show the original mask and processed mask in corners of the frame
+        # Also show the mask in corners of the frame
         h, w = white_mask.shape
         scale = 0.2  # Scale factor for the small mask
         small_mask = cv2.resize(white_mask, (int(w * scale), int(h * scale)))
@@ -193,14 +206,14 @@ class ShapeDetectionService(QObject):
                     1, (0, 255, 0), 2)
         
         # Display count of circular objects
-        circle_count_text = f"Circles: {len(circular_regions)}"
+        circle_count_text = f"Balloons: {len(circular_regions)}"
         cv2.putText(display_frame, circle_count_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 
                     1, (0, 255, 0), 2)
         cv2.putText(output_frame, circle_count_text, (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 
                     1, (0, 255, 0), 2)
         
-        # Store the processed frame for display (use the output frame instead)
-        self.processed_frame = output_frame
+        # Store the processed frame for display (use the display frame for debugging)
+        self.processed_frame = display_frame
         
         # Return only circular regions
         return circular_regions 
