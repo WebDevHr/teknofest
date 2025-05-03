@@ -34,13 +34,13 @@ class ShapeDetectionService(QObject):
     def start(self):
         """Start the white area detection service."""
         self.is_running = True
-        self.logger.info("White area detection started")
+        self.logger.info("Beyaz alan algılama başlatıldı")
         return True
     
     def stop(self):
         """Stop the white area detection service."""
         self.is_running = False
-        self.logger.info("White area detection stopped")
+        self.logger.info("Beyaz alan algılama durduruldu")
     
     def detect(self, frame, frame_count=0):
         """

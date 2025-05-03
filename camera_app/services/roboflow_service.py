@@ -47,7 +47,8 @@ class RoboflowService(QObject):
             # Modelin sınıf isimlerini al
             self.class_names = self.model.names
             
-            self.logger.info(f"Roboflow model loaded from: {self.model_path}")
+            # Log success
+            self.logger.info(f"Roboflow modeli yüklendi: {self.model_path}")
             self.is_initialized = True
             return True
         except Exception as e:
@@ -61,13 +62,15 @@ class RoboflowService(QObject):
             return False
             
         self.is_running = True
-        self.logger.info("Roboflow detection service started")
+        # Log
+        self.logger.info("Roboflow algılama servisi başlatıldı")
         return True
     
     def stop(self):
         """Stop the detection service."""
         self.is_running = False
-        self.logger.info("Roboflow detection service stopped")
+        # Log
+        self.logger.info("Roboflow algılama servisi durduruldu")
     
     def detect(self, frame):
         """

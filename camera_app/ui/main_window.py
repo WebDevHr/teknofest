@@ -55,7 +55,7 @@ class MainWindow(QMainWindow):
         self.update_toggle_button_positions()
         
         # Log that application has started
-        self.logger.info("Application started in full screen mode")
+        self.logger.info("Uygulama tam ekran modunda başlatıldı")
         
         # Show initial log messages in the sidebar
         self.load_existing_logs()
@@ -79,7 +79,6 @@ class MainWindow(QMainWindow):
         
         # Create left sidebar (Log Window) - start with 0 width
         self.log_sidebar = LogSidebar(self)
-        self.log_sidebar.clear_button.clicked.connect(self.on_clear_log)
         self.log_sidebar.setFixedWidth(0)  # Start with zero width
         
         # Connect logger signals to log sidebar
@@ -777,7 +776,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'camera_service'):
             self.camera_service.release()
             
-        self.logger.info("Application closed")
+        self.logger.info("Uygulama kapatıldı")
         event.accept()
     
     def init_shape_detection(self):
@@ -888,8 +887,8 @@ class MainWindow(QMainWindow):
         # Set camera view to fill mode
         self.camera_view.set_scale_mode("fill")
         
-        # Log a confirmation message that will appear in the sidebar (but won't be visible until opened)
-        self.logger.info("Log display initialized")
+        # Log Display Initialized
+        self.logger.info("Log gösterimi başlatıldı")
     
     def toggle_fullscreen(self):
         """Toggle between full screen and windowed mode."""
@@ -1042,12 +1041,12 @@ class MainWindow(QMainWindow):
         
         # This uses the existing YOLO service
         if is_active:
-            self.logger.info("Hareketli Balon Modu (Derin Öğrenme) aktif edildi")
+            self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli) aktif edildi")
             self.init_yolo()  # Initialize YOLO if needed
             self.camera_view.set_detection_active(True)
             self.camera_view.set_detection_mode("yolo")
         else:
-            self.logger.info("Hareketli Balon Modu (Derin Öğrenme) devre dışı bırakıldı")
+            self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
 
     def on_balloon_classic_clicked(self):
@@ -1074,10 +1073,10 @@ class MainWindow(QMainWindow):
             self._uncheck_other_detection_buttons(self.menu_sidebar.friend_foe_dl_button)
             
         if is_active:
-            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenme) aktif edildi")
+            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenmeli) aktif edildi")
             self.camera_view.set_detection_active(False)  # Currently just shows camera feed
         else:
-            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenme) devre dışı bırakıldı")
+            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
 
     def on_friend_foe_classic_clicked(self):
@@ -1105,12 +1104,12 @@ class MainWindow(QMainWindow):
         
         # This uses the existing Roboflow service
         if is_active:
-            self.logger.info("Angajman Modu (Derin Öğrenme) aktif edildi")
+            self.logger.info("Angajman Modu (Derin Öğrenmeli) aktif edildi")
             self.init_roboflow()  # Initialize Roboflow if needed
             self.camera_view.set_detection_active(True)
             self.camera_view.set_detection_mode("roboflow")
         else:
-            self.logger.info("Angajman Modu (Derin Öğrenme) devre dışı bırakıldı")
+            self.logger.info("Angajman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
 
     def on_engagement_hybrid_clicked(self):

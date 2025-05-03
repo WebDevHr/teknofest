@@ -9,8 +9,8 @@ Reusable sidebar component for the camera application.
 
 import os
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTextEdit, QLabel, QHBoxLayout
-from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QTimer, QSize
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
+from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QTimer, QSize, QPointF, QRect, QPoint
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPainterPath, QPen, QBrush
 
 class IconThemeManager:
     """Class for handling theme-aware icons."""
@@ -125,22 +125,10 @@ class LogSidebar(Sidebar):
             font-weight: bold;
             color: white;
             padding: 5px;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
+            background-color: transparent;
         """)
         self.add_widget(self.header_label)
-        
-        # Create clear log button with icon - using default dark theme
-        self.clear_button = QPushButton("Logları Temizle")
-        trash_icon_path = os.path.join(self.icon_base_dir, "trash.png")
-        icon = IconThemeManager.get_themed_icon(trash_icon_path, is_dark_theme=True)
-        self.clear_button.setIcon(icon)
-        self.clear_button.setIconSize(QSize(24, 24))
-        self.clear_button.setStyleSheet("""
-            background-color: #e74c3c;  /* Red for clear/delete action */
-            text-align: left;
-            padding-left: 40px;
-        """)
-        self.add_widget(self.clear_button)
         
         # Create log text area with enhanced styling
         self.log_text = QTextEdit()
@@ -165,63 +153,95 @@ class LogSidebar(Sidebar):
         """Update the text area style based on theme."""
         if is_dark:
             self.log_text.setStyleSheet("""
-                background-color: #2c3e50;
-                color: #ecf0f1;
-                border: 1px solid #34495e;
-                border-radius: 5px;
-                padding: 8px;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 12px;
-                line-height: 1.4;
+                QTextEdit {
+                    background-color: #2c3e50;
+                    color: #ecf0f1;
+                    border: 1px solid #34495e;
+                    border-radius: 5px;
+                    padding: 8px;
+                    font-family: 'Consolas', 'Courier New', monospace;
+                    font-size: 12px;
+                    line-height: 1.4;
+                }
+                
+                QTextEdit QScrollBar:vertical {
+                    border: none;
+                    background: #34495e;
+                    width: 10px;
+                    margin: 0px;
+                }
+                
+                QTextEdit QScrollBar::handle:vertical {
+                    background: #7f8c8d;
+                    min-height: 30px;
+                    border-radius: 5px;
+                }
+                
+                QTextEdit QScrollBar::handle:vertical:hover {
+                    background: #95a5a6;
+                }
+                
+                QTextEdit QScrollBar::add-line:vertical, QTextEdit QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                
+                QTextEdit QScrollBar::add-page:vertical, QTextEdit QScrollBar::sub-page:vertical {
+                    background: none;
+                }
             """)
             self.header_label.setStyleSheet("""
                 font-size: 16px;
                 font-weight: bold;
                 color: white;
                 padding: 5px;
-                margin-bottom: 5px;
-            """)
-            
-            # Update clear button icon and text color for dark theme
-            trash_icon_path = os.path.join(self.icon_base_dir, "trash.png")
-            icon = IconThemeManager.get_themed_icon(trash_icon_path, is_dark_theme=True)
-            self.clear_button.setIcon(icon)
-            self.clear_button.setStyleSheet("""
-                background-color: #e74c3c;  /* Red for clear/delete action */
-                text-align: left;
-                padding-left: 40px;
-                color: white;
-                font-weight: bold;
+                margin-bottom: 10px;
+                background-color: transparent;
             """)
         else:
             self.log_text.setStyleSheet("""
-                background-color: #f8f9fa;
-                color: #343a40;
-                border: 1px solid #ced4da;
-                border-radius: 5px;
-                padding: 8px;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 12px;
-                line-height: 1.4;
+                QTextEdit {
+                    background-color: #f8f9fa;
+                    color: #343a40;
+                    border: 1px solid #ced4da;
+                    border-radius: 5px;
+                    padding: 8px;
+                    font-family: 'Consolas', 'Courier New', monospace;
+                    font-size: 12px;
+                    line-height: 1.4;
+                }
+                
+                QTextEdit QScrollBar:vertical {
+                    border: none;
+                    background: #e9ecef;
+                    width: 10px;
+                    margin: 0px;
+                }
+                
+                QTextEdit QScrollBar::handle:vertical {
+                    background: #adb5bd;
+                    min-height: 30px;
+                    border-radius: 5px;
+                }
+                
+                QTextEdit QScrollBar::handle:vertical:hover {
+                    background: #868e96;
+                }
+                
+                QTextEdit QScrollBar::add-line:vertical, QTextEdit QScrollBar::sub-line:vertical {
+                    height: 0px;
+                }
+                
+                QTextEdit QScrollBar::add-page:vertical, QTextEdit QScrollBar::sub-page:vertical {
+                    background: none;
+                }
             """)
             self.header_label.setStyleSheet("""
                 font-size: 16px;
                 font-weight: bold;
                 color: #343a40;
                 padding: 5px;
-                margin-bottom: 5px;
-            """)
-            
-            # Update clear button icon and text color for light theme
-            trash_icon_path = os.path.join(self.icon_base_dir, "trash.png")
-            icon = IconThemeManager.get_themed_icon(trash_icon_path, is_dark_theme=False)
-            self.clear_button.setIcon(icon)
-            self.clear_button.setStyleSheet("""
-                background-color: #e74c3c;  /* Red for clear/delete action */
-                text-align: left;
-                padding-left: 40px;
-                color: white;  /* White text works well on red for both themes */
-                font-weight: bold;
+                margin-bottom: 10px;
+                background-color: transparent;
             """)
     
     def add_log(self, message):
@@ -283,6 +303,13 @@ class MenuSidebar(Sidebar):
         # Base directory for icons - use absolute path
         self.icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
         
+        # Buton stilini ayarlamak için QSS stil sayfası
+        self.button_style = """
+            QPushButton {
+                padding-left: 10px;
+            }
+        """
+        
         # Create menu buttons with icons
         moon_icon_path = os.path.join(self.icon_base_dir, "moon.png")
         self.theme_button = self.create_icon_button("", moon_icon_path, icon_only=True)
@@ -300,28 +327,41 @@ class MenuSidebar(Sidebar):
         # Create a widget to hold the horizontal layout
         self.top_buttons_widget = QWidget()
         self.top_buttons_widget.setLayout(self.top_buttons_layout)
+        self.top_buttons_widget.setStyleSheet("""
+            background-color: transparent;
+            border-radius: 8px;
+            padding: 5px;
+            margin-bottom: 10px;
+        """)
         
-        # Create a divider
-        self.divider = QWidget()
-        self.divider.setFixedHeight(1)
-        self.divider.setStyleSheet("background-color: #555555;")
+        # Create dividers and section titles
+        self.create_divider = lambda: self.create_divider_widget()
+        
+        # Aşama başlıkları oluştur
+        self.create_stage_title = lambda text: self.create_title_widget(text)
+        
+        # İkon yolları - artık dinamik olarak oluşturacağız
+        # İkonları oluştur
+        balloon_icon = self.create_balloon_icon()  # 1. Aşama için yeşil balon
+        friend_foe_icon = self.create_dual_balloon_icon()  # 2. Aşama için mavi-kırmızı balonlar
+        shapes_icon = self.create_shapes_icon()  # 3. Aşama için kırmızı kare, yeşil daire, mavi üçgen
         
         # Create detection mode buttons with two-line text
-        self.balloon_dl_button = self.create_icon_button("Hareketli Balon Mode\n(Derin Öğrenme)", 
-                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+        self.balloon_dl_button = self.create_icon_button("Hareketli Balon Mode\n(Derin Öğrenmeli)", 
+                                              balloon_icon, checkable=True)
         self.balloon_classic_button = self.create_icon_button("Hareketli Balon Mode\n(Klasik Yöntemler)", 
-                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
-        self.friend_foe_dl_button = self.create_icon_button("Hareketli Dost/Düşman Mode\n(Derin Öğrenme)", 
-                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+                                              balloon_icon, checkable=True)
+        self.friend_foe_dl_button = self.create_icon_button("Hareketli Dost/Düşman Mode\n(Derin Öğrenmeli)", 
+                                              friend_foe_icon, checkable=True)
         self.friend_foe_classic_button = self.create_icon_button("Hareketli Dost/Düşman Mode\n(Klasik Yöntemler)", 
-                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
-        self.engagement_dl_button = self.create_icon_button("Angajman Mode\n(Derin Öğrenme)", 
-                                              os.path.join(self.icon_base_dir, "robot.png"), checkable=True)
+                                              friend_foe_icon, checkable=True)
+        self.engagement_dl_button = self.create_icon_button("Angajman Mode\n(Derin Öğrenmeli)", 
+                                              shapes_icon, checkable=True)
         self.engagement_hybrid_button = self.create_icon_button("Angajman Mode\n(Hibrit)", 
-                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+                                              shapes_icon, checkable=True)
         
-        # Create emergency stop button
-        self.emergency_stop_button = QPushButton("ACİL STOP")
+        # Create emergency stop button with warning icon
+        self.emergency_stop_button = QPushButton("   ACİL STOP")  # Boşluklu metin ekle
         self.emergency_stop_button.setStyleSheet("""
             QPushButton {
                 background-color: #FF0000;
@@ -330,7 +370,7 @@ class MenuSidebar(Sidebar):
                 font-size: 14px;
                 text-align: center;
                 border-radius: 5px;
-                padding: 8px;
+                padding: 8px 8px 8px 8px;  
                 margin: 10px 5px;
                 min-height: 40px;
             }
@@ -341,6 +381,9 @@ class MenuSidebar(Sidebar):
                 background-color: #AA0000;
             }
         """)
+        
+        # Acil stop ikonu oluştur
+        self.create_warning_icon_for_button(self.emergency_stop_button)
         
         # Create bottom action buttons with icons only
         self.capture_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "camera.png"), icon_only=True)
@@ -362,7 +405,7 @@ class MenuSidebar(Sidebar):
         self.bottom_buttons_widget = QWidget()
         self.bottom_buttons_widget.setLayout(self.bottom_buttons_layout)
         self.bottom_buttons_widget.setStyleSheet("""
-            background-color: #444444;
+            background-color: transparent;
             border-radius: 8px;
             padding: 5px;
             margin-top: 10px;
@@ -386,26 +429,40 @@ class MenuSidebar(Sidebar):
             self.capture_button: os.path.join(self.icon_base_dir, "camera.png"),
             self.save_button: os.path.join(self.icon_base_dir, "save.png"),
             self.fps_button: os.path.join(self.icon_base_dir, "speedometer.png"),
-            self.balloon_dl_button: os.path.join(self.icon_base_dir, "detection.png"),
-            self.balloon_classic_button: os.path.join(self.icon_base_dir, "detection.png"),
-            self.friend_foe_dl_button: os.path.join(self.icon_base_dir, "detection.png"),
-            self.friend_foe_classic_button: os.path.join(self.icon_base_dir, "detection.png"),
-            self.engagement_dl_button: os.path.join(self.icon_base_dir, "robot.png"),
-            self.engagement_hybrid_button: os.path.join(self.icon_base_dir, "detection.png")
+            self.balloon_dl_button: balloon_icon,
+            self.balloon_classic_button: balloon_icon,
+            self.friend_foe_dl_button: friend_foe_icon,
+            self.friend_foe_classic_button: friend_foe_icon,
+            self.engagement_dl_button: shapes_icon,
+            self.engagement_hybrid_button: shapes_icon
         }
         
         # Add buttons to sidebar in the requested order
         self.add_widget(self.top_buttons_widget)
-        self.add_widget(self.divider)
+        self.add_widget(self.create_divider())
         
         # Add stretch to center the detection mode buttons vertically
         self.add_stretch()
         
-        # Add detection mode buttons in the middle
+        # Add detection mode buttons in the middle - with dividers and titles
+        # İlk grup - Balon
+        self.add_widget(self.create_stage_title("1. Aşama"))
         self.add_widget(self.balloon_dl_button)
         self.add_widget(self.balloon_classic_button)
+        
+        # Divider ekle
+        self.add_widget(self.create_divider())
+        
+        # İkinci grup - Dost/Düşman
+        self.add_widget(self.create_stage_title("2. Aşama"))
         self.add_widget(self.friend_foe_dl_button)
         self.add_widget(self.friend_foe_classic_button)
+        
+        # Divider ekle
+        self.add_widget(self.create_divider())
+        
+        # Üçüncü grup - Angajman
+        self.add_widget(self.create_stage_title("3. Aşama"))
         self.add_widget(self.engagement_dl_button)
         self.add_widget(self.engagement_hybrid_button)
         
@@ -415,21 +472,162 @@ class MenuSidebar(Sidebar):
         # Add emergency stop and bottom buttons at the bottom
         self.add_widget(self.emergency_stop_button)
         self.add_widget(self.bottom_buttons_widget)
+
+    def create_divider_widget(self):
+        """Create a divider widget."""
+        divider = QWidget()
+        divider.setFixedHeight(2)  # Biraz daha kalın
+        divider.setStyleSheet("""
+            background-color: #666666; 
+            margin: 12px 15px;
+            border-radius: 1px;
+        """)
+        return divider
     
-    def create_icon_button(self, text, icon_path, checkable=False, icon_only=False):
+    def create_title_widget(self, text):
+        """Create a title widget for sections."""
+        title = QLabel(text)
+        title.setStyleSheet("""
+            color: #FF9800;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 10px 5px 5px 5px;
+            padding-left: 5px;
+            background-color: transparent;
+        """)
+        title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        return title
+    
+    def create_balloon_icon(self):
+        """1. Aşama için yeşil balon ikonu oluştur."""
+        icon_size = QSize(32, 32)
+        pixmap = QPixmap(icon_size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Yeşil balon çiz
+        balloon_color = QColor(40, 180, 70)  # Yeşil
+        painter.setPen(QPen(QColor(30, 150, 50), 1.5))  # Koyu yeşil kenar
+        painter.setBrush(QBrush(balloon_color))
+        
+        # Daire şeklinde balon
+        balloon_rect = QRect(4, 4, 24, 24)
+        painter.drawEllipse(balloon_rect)
+        
+        # Balonun ipini çiz
+        painter.setPen(QPen(QColor(30, 150, 50), 1.5))
+        painter.drawLine(QPoint(16, 28), QPoint(16, 32))
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    def create_dual_balloon_icon(self):
+        """2. Aşama için mavi ve kırmızı balon ikonu oluştur."""
+        icon_size = QSize(32, 32)
+        pixmap = QPixmap(icon_size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Mavi balon
+        blue_balloon_color = QColor(30, 120, 220)  # Mavi
+        painter.setPen(QPen(QColor(20, 90, 180), 1.5))  # Koyu mavi kenar
+        painter.setBrush(QBrush(blue_balloon_color))
+        blue_balloon_rect = QRect(2, 4, 18, 18)
+        painter.drawEllipse(blue_balloon_rect)
+        
+        # Mavi balonun ipi
+        painter.setPen(QPen(QColor(20, 90, 180), 1.5))
+        painter.drawLine(QPoint(11, 22), QPoint(11, 26))
+        
+        # Kırmızı balon
+        red_balloon_color = QColor(220, 50, 50)  # Kırmızı
+        painter.setPen(QPen(QColor(180, 30, 30), 1.5))  # Koyu kırmızı kenar
+        painter.setBrush(QBrush(red_balloon_color))
+        red_balloon_rect = QRect(12, 8, 18, 18)
+        painter.drawEllipse(red_balloon_rect)
+        
+        # Kırmızı balonun ipi
+        painter.setPen(QPen(QColor(180, 30, 30), 1.5))
+        painter.drawLine(QPoint(21, 26), QPoint(21, 30))
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    def create_shapes_icon(self):
+        """3. Aşama için kırmızı kare, yeşil daire ve mavi üçgen ikonu oluştur."""
+        icon_size = QSize(32, 32)
+        pixmap = QPixmap(icon_size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Kırmızı kare
+        red_color = QColor(220, 50, 50)  # Kırmızı
+        painter.setPen(QPen(QColor(180, 30, 30), 1.5))  # Koyu kırmızı kenar
+        painter.setBrush(QBrush(red_color))
+        square_rect = QRect(2, 6, 12, 12)
+        painter.drawRect(square_rect)
+        
+        # Yeşil daire
+        green_color = QColor(40, 180, 70)  # Yeşil
+        painter.setPen(QPen(QColor(30, 150, 50), 1.5))  # Koyu yeşil kenar
+        painter.setBrush(QBrush(green_color))
+        circle_rect = QRect(18, 6, 12, 12)
+        painter.drawEllipse(circle_rect)
+        
+        # Mavi üçgen
+        blue_color = QColor(30, 120, 220)  # Mavi
+        painter.setPen(QPen(QColor(20, 90, 180), 1.5))  # Koyu mavi kenar
+        painter.setBrush(QBrush(blue_color))
+        
+        # Üçgen için noktalar
+        triangle = QPainterPath()
+        triangle.moveTo(16, 22)  # Üst nokta
+        triangle.lineTo(8, 32)   # Sol alt
+        triangle.lineTo(24, 32)  # Sağ alt
+        triangle.lineTo(16, 22)  # Tekrar üst nokta
+        painter.drawPath(triangle)
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    def create_icon_button(self, text, icon_path_or_icon, checkable=False, icon_only=False):
         """Create a button with a theme-aware icon."""
         button = QPushButton(text)
         
-        # Add themed icon if exists, otherwise use a fallback text
-        if os.path.exists(icon_path):
+        # Icon can now be a QIcon object or a path
+        if isinstance(icon_path_or_icon, QIcon):
+            # Hazır ikon nesnesi kullan
+            button.setIcon(icon_path_or_icon)
+            button.setIconSize(QSize(28, 28))
+        elif os.path.exists(icon_path_or_icon):
+            # Dosyadan ikon yükle
             # Create a themed icon based on current theme
-            icon = IconThemeManager.get_themed_icon(icon_path, self.is_dark_theme)
+            icon = IconThemeManager.get_themed_icon(icon_path_or_icon, self.is_dark_theme)
             button.setIcon(icon)
-            button.setIconSize(QSize(24, 24))
+            button.setIconSize(QSize(28, 28))
         else:
             # Use first letter of each word as a fallback
             fallback = ''.join([word[0] for word in text.split() if word])
             button.setText(f"[{fallback}] {text}")
+        
+        # İkon ve metin arasındaki boşluğu artır
+        if not icon_only and text:
+            # İki satır varsa her iki satırın da başında boşluk olmasını sağla
+            if "\n" in text:
+                # Metni satırlara ayır
+                lines = text.split("\n")
+                # Her satırın başına boşluk ekleyip birleştir
+                formatted_text = "   " + lines[0] + "\n   " + lines[1]
+                button.setText(formatted_text)
+            else:
+                # Normal CSS padding kullanımı yerine ikondan sonra boşluk ekleyen bir yaklaşım
+                button.setText("   " + text)
         
         # Set checkable if needed
         if checkable:
@@ -440,64 +638,84 @@ class MenuSidebar(Sidebar):
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 30px;
-                        padding-right: 5px;
-                        padding-top: 8px;
-                        padding-bottom: 8px;
+                        padding-left: 16px;
+                        padding-right: 10px;
+                        padding-top: 10px;
+                        padding-bottom: 10px;
                         color: white;
-                        font-size: 11px;
-                        min-height: 50px;
+                        font-size: 13px;
+                        font-weight: normal;
+                        min-height: 55px;
+                        border-radius: 5px;
+                    }
+                    QPushButton:hover {
+                        background-color: #444444;
                     }
                     QPushButton:checked {
-                        background-color: #FF5722;
+                        background-color: #4CAF50;
                         color: white;
+                        font-weight: bold;
                     }
                 """)
             else:
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 30px;
-                        padding-right: 5px;
-                        padding-top: 8px;
-                        padding-bottom: 8px;
+                        padding-left: 16px;
+                        padding-right: 10px;
+                        padding-top: 10px;
+                        padding-bottom: 10px;
                         color: #333333;
-                        font-size: 11px;
-                        min-height: 50px;
-                    }
-                    QPushButton:checked {
-                        background-color: #FF5722;
-                        color: white;
-                    }
-                """)
-        elif icon_only:
-            # Style for icon-only buttons
-            if self.is_dark_theme:
-                button.setStyleSheet("""
-                    QPushButton {
-                        text-align: center;
-                        color: white;
-                        min-width: 40px;
-                        max-width: 40px;
-                        height: 40px;
+                        font-size: 13px;
+                        font-weight: normal;
+                        min-height: 55px;
                         border-radius: 5px;
                     }
                     QPushButton:hover {
+                        background-color: #e0e0e0;
+                    }
+                    QPushButton:checked {
+                        background-color: #4CAF50;
+                        color: white;
+                        font-weight: bold;
+                    }
+                """)
+        elif icon_only:
+            # Style for icon-only buttons - alt ve üst butonlar için yuvarlak stil
+            if self.is_dark_theme:
+                button.setStyleSheet("""
+                    QPushButton {
                         background-color: #444444;
+                        border-radius: 18px;
+                        padding: 5px;
+                        min-width: 36px;
+                        min-height: 36px;
+                        max-width: 36px;
+                        max-height: 36px;
+                    }
+                    QPushButton:hover {
+                        background-color: #555555;
+                    }
+                    QPushButton:pressed {
+                        background-color: #666666;
                     }
                 """)
             else:
                 button.setStyleSheet("""
                     QPushButton {
-                        text-align: center;
-                        color: #333333;
-                        min-width: 40px;
-                        max-width: 40px;
-                        height: 40px;
-                        border-radius: 5px;
+                        background-color: #e0e0e0;
+                        border-radius: 18px;
+                        padding: 5px;
+                        min-width: 36px;
+                        min-height: 36px;
+                        max-width: 36px;
+                        max-height: 36px;
                     }
                     QPushButton:hover {
                         background-color: #d0d0d0;
+                    }
+                    QPushButton:pressed {
+                        background-color: #c0c0c0;
                     }
                 """)
         else:
@@ -506,149 +724,283 @@ class MenuSidebar(Sidebar):
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 40px;
+                        padding-left: 16px;
                         color: white;
+                    }
+                    QPushButton:hover {
+                        background-color: #444444;
                     }
                 """)
             else:
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 40px;
+                        padding-left: 16px;
                         color: #333333;
+                    }
+                    QPushButton:hover {
+                        background-color: #e0e0e0;
                     }
                 """)
         
         return button
     
+    def create_warning_icon_for_button(self, button):
+        """Acil stop butonu için uyarı üçgeni ikonu oluştur."""
+        # İkon oluştur
+        icon_size = QSize(24, 24)
+        pixmap = QPixmap(icon_size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Uyarı üçgeni yolu oluştur
+        path = QPainterPath()
+        path.moveTo(12, 2)   # Üst nokta
+        path.lineTo(22, 22)  # Sağ alt
+        path.lineTo(2, 22)   # Sol alt
+        path.lineTo(12, 2)   # Tekrar üst nokta
+        
+        # Kenarlık ve dolgu renklerini ayarla
+        outline_pen = QPen(QColor(255, 255, 0))  # Sarı kenarlık
+        outline_pen.setWidth(2)
+        painter.setPen(outline_pen)
+        painter.setBrush(QBrush(QColor(255, 255, 0)))  # Sarı dolgu
+        painter.drawPath(path)
+        
+        # Ünlem işareti çiz
+        painter.setPen(QPen(QColor(0, 0, 0), 2))  # Siyah, 2px kalınlık
+        painter.drawLine(QPointF(12, 8), QPointF(12, 15))  # Ünlem dikey çizgi
+        painter.drawEllipse(QPointF(12, 18), 1, 1)  # Ünlem noktası
+        
+        painter.end()
+        
+        # Butona ikonu ekle
+        button.setIcon(QIcon(pixmap))
+        button.setIconSize(icon_size)
+    
     def update_theme(self, is_dark=True):
-        """Update button icons and styles based on theme."""
+        """Update the theme (light/dark) for all buttons and elements."""
         self.is_dark_theme = is_dark
         
-        # Update button icons with the appropriate theme
-        for button in self.buttons:
-            if button in self.button_icons:
-                if button == self.theme_button:
-                    # Use different icon for theme button based on current theme
-                    icon_path = self.button_icons[button]["dark" if is_dark else "light"]
-                    themed_icon = IconThemeManager.get_themed_icon(icon_path, is_dark_theme=is_dark)
+        # Başlıkların rengini ayarla
+        for i in range(self.layout.count()):
+            widget = self.layout.itemAt(i).widget()
+            if isinstance(widget, QLabel) and widget.styleSheet().find("font-weight: bold") > -1:
+                if is_dark:
+                    widget.setStyleSheet("""
+                        color: #FF9800;
+                        font-weight: bold;
+                        font-size: 16px;
+                        margin: 10px 5px 5px 5px;
+                        padding-left: 5px;
+                        background-color: transparent;
+                    """)
                 else:
-                    # Other buttons use regular path
-                    icon_path = self.button_icons[button]
-                    themed_icon = IconThemeManager.get_themed_icon(icon_path, is_dark_theme=is_dark)
-                
-                button.setIcon(themed_icon)
-                button.setIconSize(QSize(24, 24))
+                    widget.setStyleSheet("""
+                        color: #E65100;
+                        font-weight: bold;
+                        font-size: 16px;
+                        margin: 10px 5px 5px 5px;
+                        padding-left: 5px;
+                        background-color: transparent;
+                    """)
         
-        # Update divider color
-        self.divider.setStyleSheet(f"background-color: {'#555555' if is_dark else '#cccccc'};")
+        # Divider'ların rengini ayarla
+        for i in range(self.layout.count()):
+            widget = self.layout.itemAt(i).widget()
+            if widget and widget.height() == 2:  # Divider'ların yüksekliği 2
+                if is_dark:
+                    widget.setStyleSheet("""
+                        background-color: #666666; 
+                        margin: 12px 15px;
+                        border-radius: 1px;
+                    """)
+                else:
+                    widget.setStyleSheet("""
+                        background-color: #CCCCCC; 
+                        margin: 12px 15px;
+                        border-radius: 1px;
+                    """)
         
-        # Update bottom buttons container
+        # Update the theme button text
         if is_dark:
-            self.bottom_buttons_widget.setStyleSheet("""
-                background-color: #444444;
-                border-radius: 8px;
-                padding: 5px;
-                margin-top: 10px;
-            """)
+            self.theme_button.setToolTip("Açık Temaya Geç")
         else:
-            self.bottom_buttons_widget.setStyleSheet("""
-                background-color: #d0d0d0;
-                border-radius: 8px;
-                padding: 5px;
-                margin-top: 10px;
-            """)
+            self.theme_button.setToolTip("Koyu Temaya Geç")
         
-        # Update button text colors based on theme
+        # Update the theme button icon specifically
+        if "dark" in self.button_icons[self.theme_button] and "light" in self.button_icons[self.theme_button]:
+            theme_key = "dark" if is_dark else "light"
+            icon_path = self.button_icons[self.theme_button][theme_key]
+            
+            if os.path.exists(icon_path):
+                themed_icon = IconThemeManager.get_themed_icon(icon_path, is_dark_theme=is_dark)
+                self.theme_button.setIcon(themed_icon)
+        
+        # Update all button icons and text spacing
         for button in self.buttons:
-            if button == self.theme_button or button == self.settings_button or button == self.exit_button or \
-               button == self.capture_button or button == self.save_button or button == self.fps_button:
-                # For icon-only buttons
+            if button == self.theme_button:  # Already handled above
+                continue
+                
+            icon_path_or_icon = self.button_icons.get(button)
+            if not icon_path_or_icon:
+                continue
+            
+            # Özel ikonlar için QIcon nesnelerini doğrudan kullan
+            if isinstance(icon_path_or_icon, QIcon):
+                button.setIcon(icon_path_or_icon)
+                button.setIconSize(QSize(28, 28))
+            elif isinstance(icon_path_or_icon, dict):  # If it has different icons for dark/light
+                icon_path = icon_path_or_icon.get("dark" if is_dark else "light", "")
+                
+                if os.path.exists(icon_path):
+                    themed_icon = IconThemeManager.get_themed_icon(icon_path, is_dark_theme=is_dark)
+                    button.setIcon(themed_icon)
+                    button.setIconSize(QSize(28, 28))
+            elif os.path.exists(icon_path_or_icon):
+                themed_icon = IconThemeManager.get_themed_icon(icon_path_or_icon, is_dark_theme=is_dark)
+                button.setIcon(themed_icon)
+                button.setIconSize(QSize(28, 28))
+            
+            # İkon ve metin arasındaki boşluğu güncelle
+            text = button.text().strip()
+            if text:
+                # İki satır varsa her iki satırın da başında boşluk olmasını sağla
+                if "\n" in text:
+                    # Önce mevcut boşlukları temizle
+                    lines = [line.strip() for line in text.split("\n")]
+                    # Her satırın başına boşluk ekleyip birleştir
+                    formatted_text = "   " + lines[0] + "\n   " + lines[1]
+                    button.setText(formatted_text)
+                else:
+                    # Tek satırlı metin
+                    button.setText("   " + text)
+        
+        # Update button styles
+        for button in self.buttons:
+            if button.isCheckable():
                 if is_dark:
                     button.setStyleSheet("""
                         QPushButton {
-                            text-align: center;
+                            text-align: left;
+                            padding-left: 16px;
+                            padding-right: 10px;
+                            padding-top: 10px;
+                            padding-bottom: 10px;
                             color: white;
-                            min-width: 40px;
-                            max-width: 40px;
-                            height: 40px;
+                            font-size: 13px;
+                            font-weight: normal;
+                            min-height: 55px;
                             border-radius: 5px;
                         }
                         QPushButton:hover {
                             background-color: #444444;
                         }
+                        QPushButton:checked {
+                            background-color: #4CAF50;
+                            color: white;
+                            font-weight: bold;
+                        }
                     """)
                 else:
                     button.setStyleSheet("""
                         QPushButton {
-                            text-align: center;
+                            text-align: left;
+                            padding-left: 16px;
+                            padding-right: 10px;
+                            padding-top: 10px;
+                            padding-bottom: 10px;
                             color: #333333;
-                            min-width: 40px;
-                            max-width: 40px;
-                            height: 40px;
+                            font-size: 13px;
+                            font-weight: normal;
+                            min-height: 55px;
                             border-radius: 5px;
+                        }
+                        QPushButton:hover {
+                            background-color: #e0e0e0;
+                        }
+                        QPushButton:checked {
+                            background-color: #4CAF50;
+                            color: white;
+                            font-weight: bold;
+                        }
+                    """)
+            elif button in [self.theme_button, self.settings_button, self.exit_button,
+                           self.capture_button, self.save_button, self.fps_button]:
+                # Top and bottom icon buttons style
+                if is_dark:
+                    button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #444444;
+                            border-radius: 18px;
+                            padding: 5px;
+                            min-width: 36px;
+                            min-height: 36px;
+                            max-width: 36px;
+                            max-height: 36px;
+                        }
+                        QPushButton:hover {
+                            background-color: #555555;
+                        }
+                        QPushButton:pressed {
+                            background-color: #666666;
+                        }
+                    """)
+                else:
+                    button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #e0e0e0;
+                            border-radius: 18px;
+                            padding: 5px;
+                            min-width: 36px;
+                            min-height: 36px;
+                            max-width: 36px;
+                            max-height: 36px;
                         }
                         QPushButton:hover {
                             background-color: #d0d0d0;
                         }
-                    """)
-            elif button.isCheckable():
-                # For checkable buttons, we need different styles
-                if is_dark:
-                    button.setStyleSheet("""
-                        QPushButton {
-                            background-color: #333333;
-                            color: white;
-                            text-align: left;
-                            padding-left: 30px;
-                            padding-right: 5px;
-                            padding-top: 8px;
-                            padding-bottom: 8px;
-                            font-size: 11px;
-                            min-height: 50px;
-                        }
-                        QPushButton:checked {
-                            background-color: #444444;
-                            border-left: 3px solid #4CAF50;
-                        }
-                    """)
-                else:
-                    button.setStyleSheet("""
-                        QPushButton {
-                            background-color: #e0e0e0;
-                            color: black;
-                            text-align: left;
-                            padding-left: 30px;
-                            padding-right: 5px;
-                            padding-top: 8px;
-                            padding-bottom: 8px;
-                            font-size: 11px;
-                            min-height: 50px;
-                        }
-                        QPushButton:checked {
-                            background-color: #d0d0d0;
-                            border-left: 3px solid #2196F3;
-                        }
-                    """)
-            else:
-                # For regular buttons
-                if is_dark:
-                    button.setStyleSheet("""
-                        QPushButton {
-                            background-color: #333333;
-                            color: white;
-                            text-align: left;
-                            padding-left: 40px;
-                        }
-                    """)
-                else:
-                    button.setStyleSheet("""
-                        QPushButton {
-                            background-color: #e0e0e0;
-                            color: black;
-                            text-align: left;
-                            padding-left: 40px;
+                        QPushButton:pressed {
+                            background-color: #c0c0c0;
                         }
                     """)
         
-        # Update theme button text (no longer needed since it's icon-only) 
+        # Update button container widgets style
+        # Top buttons widget style
+        self.top_buttons_widget.setStyleSheet("""
+            background-color: transparent;
+            border-radius: 8px;
+            padding: 5px;
+            margin-bottom: 10px;
+        """)
+        
+        # Bottom buttons widget style
+        self.bottom_buttons_widget.setStyleSheet("""
+            background-color: transparent;
+            border-radius: 8px;
+            padding: 5px;
+            margin-top: 10px;
+        """)
+        
+        # Emergency stop button should stay red always
+        self.emergency_stop_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF0000;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                text-align: center;
+                border-radius: 5px;
+                padding: 8px 8px 8px 8px;
+                margin: 10px 5px;
+                min-height: 40px;
+            }
+            QPushButton:hover {
+                background-color: #CC0000;
+            }
+            QPushButton:pressed {
+                background-color: #AA0000;
+            }
+        """) 

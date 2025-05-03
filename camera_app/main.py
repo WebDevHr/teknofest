@@ -30,7 +30,7 @@ def main():
     
     # Initialize logger service (singleton)
     logger = LoggerService()
-    logger.info("Application started")
+    logger.info("Uygulama başlatıldı")
     
     # Create and show main window
     window = MainWindow()

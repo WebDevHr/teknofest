@@ -44,12 +44,12 @@ class CameraService(QObject):
         self.capture = cv2.VideoCapture(self.camera_id)
         
         if not self.capture.isOpened():
-            error_msg = f"Could not open camera with ID {self.camera_id}"
+            error_msg = f"Kamera ID {self.camera_id} başlatılamadı"
             self.logger.error(error_msg)
             self.camera_error.emit(error_msg)
             return False
         
-        self.logger.info(f"Camera initialized successfully (ID: {self.camera_id})")
+        self.logger.info(f"Kamera başarıyla başlatıldı (ID: {self.camera_id})")
         return True
     
     def start(self, fps=30):
@@ -65,7 +65,7 @@ class CameraService(QObject):
         self.timer.start(interval)
         
         self.is_running = True
-        self.logger.info(f"Camera started at {fps} FPS")
+        self.logger.info(f"Kamera {fps} FPS hızında başlatıldı")
         return True
     
     def stop(self):
@@ -74,7 +74,7 @@ class CameraService(QObject):
             self.timer.stop()
             
         self.is_running = False
-        self.logger.info("Camera stopped")
+        self.logger.info("Kamera durduruldu")
     
     def release(self):
         """Release camera resources."""
@@ -83,7 +83,7 @@ class CameraService(QObject):
         if self.capture:
             self.capture.release()
             self.capture = None
-            self.logger.info("Camera resources released")
+            self.logger.info("Kamera kaynakları serbest bırakıldı")
     
     def _calculate_fps(self):
         """Calculate the current FPS."""
@@ -108,7 +108,7 @@ class CameraService(QObject):
     def _process_frame(self):
         """Process a frame from the camera."""
         if not self.capture or not self.capture.isOpened():
-            self.camera_error.emit("Camera not available")
+            self.camera_error.emit("Kamera mevcut değil")
             self.stop()
             return
             
@@ -163,18 +163,18 @@ class CameraService(QObject):
             # Emit the frame
             self.frame_ready.emit(q_image)
         else:
-            self.camera_error.emit("Error capturing frame")
+            self.camera_error.emit("Kare yakalama hatası")
     
     def toggle_fps_display(self):
         """Toggle the display of FPS counter."""
         self.show_fps = not self.show_fps
-        self.logger.info(f"FPS display {'enabled' if self.show_fps else 'disabled'}")
+        self.logger.info(f"FPS gösterimi {('etkinleştirildi' if self.show_fps else 'devre dışı bırakıldı')}")
         return self.show_fps
     
     def capture_image(self):
         """Capture and save the current frame."""
         if not self.capture or not self.capture.isOpened():
-            self.logger.error("Cannot capture: Camera not available")
+            self.logger.error("Kamera mevcut değil")
             return None
             
         # Get the captures directory from config
@@ -193,31 +193,31 @@ class CameraService(QObject):
         if ret:
             # Save the image
             cv2.imwrite(filename, frame)
-            self.logger.info(f"Image captured and saved as {filename}")
+            self.logger.info(f"Görüntü yakalandı ve {filename} olarak kaydedildi")
             return filename
         else:
-            self.logger.error("Failed to capture image")
+            self.logger.error("Görüntü kaydedilemedi")
             return None
     
     def set_yolo_service(self, yolo_service):
         """Set the YOLO service for object detection."""
         self.yolo_service = yolo_service
-        self.logger.info("YOLO service connected to camera")
+        self.logger.info("YOLO servisi kameraya bağlandı")
     
     def set_shape_detection_service(self, shape_detection_service):
         """Set the shape detection service."""
         self.shape_detection_service = shape_detection_service
-        self.logger.info("Shape detection service connected to camera")
+        self.logger.info("Şekil algılama servisi kameraya bağlandı")
     
     def set_roboflow_service(self, roboflow_service):
         """Set the Roboflow service for object detection."""
         self.roboflow_service = roboflow_service
-        self.logger.info("Roboflow service connected to camera")
+        self.logger.info("Roboflow servisi kameraya bağlandı")
     
     def save_current_frame(self, filename):
         """Save the current frame to the specified file."""
         if not self.capture or not self.capture.isOpened():
-            self.logger.error("Cannot save: Camera not available")
+            self.logger.error("Kamera mevcut değil")
             return False
             
         # Ensure directory exists
@@ -230,8 +230,8 @@ class CameraService(QObject):
         if ret:
             # Save the image
             cv2.imwrite(filename, frame)
-            self.logger.info(f"Current frame saved as {filename}")
+            self.logger.info(f"Mevcut kare {filename} olarak kaydedildi")
             return True
         else:
-            self.logger.error("Failed to save current frame")
+            self.logger.error("Mevcut kare kaydedilemedi")
             return False 

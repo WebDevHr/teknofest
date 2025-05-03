@@ -234,9 +234,9 @@ class CameraView(QWidget):
         if self.detection_active and self.detection_mode:
             mode_text = None
             if self.detection_mode == "yolo":
-                mode_text = "Hareketli Balon Modu (Derin Öğrenme)"
+                mode_text = "Hareketli Balon Modu (Derin Öğrenmeli)"
             elif self.detection_mode == "roboflow":
-                mode_text = "Angajman Modu (Derin Öğrenme)"
+                mode_text = "Angajman Modu (Derin Öğrenmeli)"
                 
             if mode_text:
                 # Create semi-transparent background for mode text
