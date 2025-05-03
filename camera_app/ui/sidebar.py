@@ -115,6 +115,9 @@ class LogSidebar(Sidebar):
     def __init__(self, parent=None):
         super().__init__(parent, position="left", width=400)  # Increased width for better readability
         
+        # Base directory for icons - use absolute path
+        self.icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
+        
         # Add header label
         self.header_label = QLabel("Uygulama Logları")
         self.header_label.setStyleSheet("""
@@ -128,7 +131,8 @@ class LogSidebar(Sidebar):
         
         # Create clear log button with icon - using default dark theme
         self.clear_button = QPushButton("Logları Temizle")
-        icon = IconThemeManager.get_themed_icon("icons/trash.png", is_dark_theme=True)
+        trash_icon_path = os.path.join(self.icon_base_dir, "trash.png")
+        icon = IconThemeManager.get_themed_icon(trash_icon_path, is_dark_theme=True)
         self.clear_button.setIcon(icon)
         self.clear_button.setIconSize(QSize(24, 24))
         self.clear_button.setStyleSheet("""
@@ -179,7 +183,8 @@ class LogSidebar(Sidebar):
             """)
             
             # Update clear button icon and text color for dark theme
-            icon = IconThemeManager.get_themed_icon("icons/trash.png", is_dark_theme=True)
+            trash_icon_path = os.path.join(self.icon_base_dir, "trash.png")
+            icon = IconThemeManager.get_themed_icon(trash_icon_path, is_dark_theme=True)
             self.clear_button.setIcon(icon)
             self.clear_button.setStyleSheet("""
                 background-color: #e74c3c;  /* Red for clear/delete action */
@@ -208,7 +213,8 @@ class LogSidebar(Sidebar):
             """)
             
             # Update clear button icon and text color for light theme
-            icon = IconThemeManager.get_themed_icon("icons/trash.png", is_dark_theme=False)
+            trash_icon_path = os.path.join(self.icon_base_dir, "trash.png")
+            icon = IconThemeManager.get_themed_icon(trash_icon_path, is_dark_theme=False)
             self.clear_button.setIcon(icon)
             self.clear_button.setStyleSheet("""
                 background-color: #e74c3c;  /* Red for clear/delete action */
@@ -269,15 +275,19 @@ class MenuSidebar(Sidebar):
     """Menu sidebar implementation."""
     
     def __init__(self, parent=None):
-        super().__init__(parent, position="right", width=250)
+        super().__init__(parent, position="right", width=280)
         
         # Flag to track current theme
         self.is_dark_theme = True
         
+        # Base directory for icons - use absolute path
+        self.icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
+        
         # Create menu buttons with icons
-        self.theme_button = self.create_icon_button("", "icons/theme.png", icon_only=True)
-        self.settings_button = self.create_icon_button("", "icons/settings.png", icon_only=True)
-        self.exit_button = self.create_icon_button("", "icons/exit.png", icon_only=True)
+        moon_icon_path = os.path.join(self.icon_base_dir, "moon.png")
+        self.theme_button = self.create_icon_button("", moon_icon_path, icon_only=True)
+        self.settings_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "settings.png"), icon_only=True)
+        self.exit_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "exit.png"), icon_only=True)
         
         # Create a horizontal layout for the top buttons
         self.top_buttons_layout = QHBoxLayout()
@@ -296,45 +306,115 @@ class MenuSidebar(Sidebar):
         self.divider.setFixedHeight(1)
         self.divider.setStyleSheet("background-color: #555555;")
         
-        # Create other menu buttons with icons and text
-        self.capture_button = self.create_icon_button("Görüntü Yakala", "icons/camera.png")
-        self.save_button = self.create_icon_button("Kaydet", "icons/save.png")
-        self.yolo_button = self.create_icon_button("YOLO Tespiti", "icons/detection.png", checkable=True)
-        self.shape_button = self.create_icon_button("Şekil Tespiti", "icons/shapes.png", checkable=True)
-        self.roboflow_button = self.create_icon_button("Roboflow Tespiti", "icons/robot.png", checkable=True)
-        self.fps_button = self.create_icon_button("FPS Göster", "icons/speedometer.png")
+        # Create detection mode buttons with two-line text
+        self.balloon_dl_button = self.create_icon_button("Hareketli Balon Mode\n(Derin Öğrenme)", 
+                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+        self.balloon_classic_button = self.create_icon_button("Hareketli Balon Mode\n(Klasik Yöntemler)", 
+                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+        self.friend_foe_dl_button = self.create_icon_button("Hareketli Dost/Düşman Mode\n(Derin Öğrenme)", 
+                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+        self.friend_foe_classic_button = self.create_icon_button("Hareketli Dost/Düşman Mode\n(Klasik Yöntemler)", 
+                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+        self.engagement_dl_button = self.create_icon_button("Angajman Mode\n(Derin Öğrenme)", 
+                                              os.path.join(self.icon_base_dir, "robot.png"), checkable=True)
+        self.engagement_hybrid_button = self.create_icon_button("Angajman Mode\n(Hibrit)", 
+                                              os.path.join(self.icon_base_dir, "detection.png"), checkable=True)
+        
+        # Create emergency stop button
+        self.emergency_stop_button = QPushButton("ACİL STOP")
+        self.emergency_stop_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF0000;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                text-align: center;
+                border-radius: 5px;
+                padding: 8px;
+                margin: 10px 5px;
+                min-height: 40px;
+            }
+            QPushButton:hover {
+                background-color: #CC0000;
+            }
+            QPushButton:pressed {
+                background-color: #AA0000;
+            }
+        """)
+        
+        # Create bottom action buttons with icons only
+        self.capture_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "camera.png"), icon_only=True)
+        self.capture_button.setToolTip("Görüntü Yakala")
+        self.save_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "save.png"), icon_only=True)
+        self.save_button.setToolTip("Kaydet")
+        self.fps_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "speedometer.png"), icon_only=True)
+        self.fps_button.setToolTip("FPS Göster")
+        
+        # Create a horizontal layout for the bottom buttons
+        self.bottom_buttons_layout = QHBoxLayout()
+        self.bottom_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.bottom_buttons_layout.setSpacing(5)
+        self.bottom_buttons_layout.addWidget(self.capture_button)
+        self.bottom_buttons_layout.addWidget(self.save_button)
+        self.bottom_buttons_layout.addWidget(self.fps_button)
+        
+        # Create a widget to hold the bottom layout
+        self.bottom_buttons_widget = QWidget()
+        self.bottom_buttons_widget.setLayout(self.bottom_buttons_layout)
+        self.bottom_buttons_widget.setStyleSheet("""
+            background-color: #444444;
+            border-radius: 8px;
+            padding: 5px;
+            margin-top: 10px;
+        """)
         
         # Store buttons for theme updates
         self.buttons = [
             self.theme_button, self.settings_button, self.exit_button,
-            self.capture_button, self.save_button, 
-            self.yolo_button, self.shape_button, self.roboflow_button,
-            self.fps_button
+            self.capture_button, self.save_button, self.fps_button,
+            self.balloon_dl_button, self.balloon_classic_button,
+            self.friend_foe_dl_button, self.friend_foe_classic_button,
+            self.engagement_dl_button, self.engagement_hybrid_button
         ]
         
         # Store icons paths and alternates for theme updates
         self.button_icons = {
-            self.theme_button: {"dark": "icons/theme.png", "light": "icons/sun.png"},
-            self.settings_button: "icons/settings.png",
-            self.exit_button: "icons/exit.png",
-            self.capture_button: "icons/camera.png",
-            self.save_button: "icons/save.png",
-            self.yolo_button: "icons/detection.png",
-            self.shape_button: "icons/shapes.png",
-            self.roboflow_button: "icons/robot.png",
-            self.fps_button: "icons/speedometer.png"
+            self.theme_button: {"dark": os.path.join(self.icon_base_dir, "moon.png"), 
+                                "light": os.path.join(self.icon_base_dir, "sun.png")},
+            self.settings_button: os.path.join(self.icon_base_dir, "settings.png"),
+            self.exit_button: os.path.join(self.icon_base_dir, "exit.png"),
+            self.capture_button: os.path.join(self.icon_base_dir, "camera.png"),
+            self.save_button: os.path.join(self.icon_base_dir, "save.png"),
+            self.fps_button: os.path.join(self.icon_base_dir, "speedometer.png"),
+            self.balloon_dl_button: os.path.join(self.icon_base_dir, "detection.png"),
+            self.balloon_classic_button: os.path.join(self.icon_base_dir, "detection.png"),
+            self.friend_foe_dl_button: os.path.join(self.icon_base_dir, "detection.png"),
+            self.friend_foe_classic_button: os.path.join(self.icon_base_dir, "detection.png"),
+            self.engagement_dl_button: os.path.join(self.icon_base_dir, "robot.png"),
+            self.engagement_hybrid_button: os.path.join(self.icon_base_dir, "detection.png")
         }
         
         # Add buttons to sidebar in the requested order
         self.add_widget(self.top_buttons_widget)
         self.add_widget(self.divider)
-        self.add_widget(self.capture_button)
-        self.add_widget(self.save_button)
-        self.add_widget(self.yolo_button)
-        self.add_widget(self.shape_button)
-        self.add_widget(self.roboflow_button)
-        self.add_widget(self.fps_button)
+        
+        # Add stretch to center the detection mode buttons vertically
         self.add_stretch()
+        
+        # Add detection mode buttons in the middle
+        self.add_widget(self.balloon_dl_button)
+        self.add_widget(self.balloon_classic_button)
+        self.add_widget(self.friend_foe_dl_button)
+        self.add_widget(self.friend_foe_classic_button)
+        self.add_widget(self.engagement_dl_button)
+        self.add_widget(self.engagement_hybrid_button)
+        
+        # Add stretch to keep the buttons centered
+        self.add_stretch()
+        
+        # Add emergency stop and bottom buttons at the bottom
+        self.add_widget(self.emergency_stop_button)
+        self.add_widget(self.bottom_buttons_widget)
     
     def create_icon_button(self, text, icon_path, checkable=False, icon_only=False):
         """Create a button with a theme-aware icon."""
@@ -360,8 +440,13 @@ class MenuSidebar(Sidebar):
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 40px;
+                        padding-left: 30px;
+                        padding-right: 5px;
+                        padding-top: 8px;
+                        padding-bottom: 8px;
                         color: white;
+                        font-size: 11px;
+                        min-height: 50px;
                     }
                     QPushButton:checked {
                         background-color: #FF5722;
@@ -372,8 +457,13 @@ class MenuSidebar(Sidebar):
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 40px;
+                        padding-left: 30px;
+                        padding-right: 5px;
+                        padding-top: 8px;
+                        padding-bottom: 8px;
                         color: #333333;
+                        font-size: 11px;
+                        min-height: 50px;
                     }
                     QPushButton:checked {
                         background-color: #FF5722;
@@ -453,9 +543,26 @@ class MenuSidebar(Sidebar):
         # Update divider color
         self.divider.setStyleSheet(f"background-color: {'#555555' if is_dark else '#cccccc'};")
         
+        # Update bottom buttons container
+        if is_dark:
+            self.bottom_buttons_widget.setStyleSheet("""
+                background-color: #444444;
+                border-radius: 8px;
+                padding: 5px;
+                margin-top: 10px;
+            """)
+        else:
+            self.bottom_buttons_widget.setStyleSheet("""
+                background-color: #d0d0d0;
+                border-radius: 8px;
+                padding: 5px;
+                margin-top: 10px;
+            """)
+        
         # Update button text colors based on theme
         for button in self.buttons:
-            if button == self.theme_button or button == self.settings_button or button == self.exit_button:
+            if button == self.theme_button or button == self.settings_button or button == self.exit_button or \
+               button == self.capture_button or button == self.save_button or button == self.fps_button:
                 # For icon-only buttons
                 if is_dark:
                     button.setStyleSheet("""
@@ -493,7 +600,12 @@ class MenuSidebar(Sidebar):
                             background-color: #333333;
                             color: white;
                             text-align: left;
-                            padding-left: 40px;
+                            padding-left: 30px;
+                            padding-right: 5px;
+                            padding-top: 8px;
+                            padding-bottom: 8px;
+                            font-size: 11px;
+                            min-height: 50px;
                         }
                         QPushButton:checked {
                             background-color: #444444;
@@ -506,7 +618,12 @@ class MenuSidebar(Sidebar):
                             background-color: #e0e0e0;
                             color: black;
                             text-align: left;
-                            padding-left: 40px;
+                            padding-left: 30px;
+                            padding-right: 5px;
+                            padding-top: 8px;
+                            padding-bottom: 8px;
+                            font-size: 11px;
+                            min-height: 50px;
                         }
                         QPushButton:checked {
                             background-color: #d0d0d0;

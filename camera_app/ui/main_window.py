@@ -11,7 +11,7 @@ import sys
 import os
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QPushButton, QMessageBox, QLabel
 from PyQt5.QtCore import Qt, QTimer, QSize
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QFont, QIcon, QColor
 from datetime import datetime
 
 from services.logger_service import LoggerService
@@ -92,12 +92,16 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.settings_button.clicked.connect(self.on_settings_clicked)
         self.menu_sidebar.capture_button.clicked.connect(self.on_capture_clicked)
         self.menu_sidebar.save_button.clicked.connect(self.on_save_clicked)
-        self.menu_sidebar.yolo_button.clicked.connect(self.on_yolo_clicked)
-        self.menu_sidebar.shape_button.clicked.connect(self.on_shape_clicked)
-        self.menu_sidebar.roboflow_button.clicked.connect(self.on_roboflow_clicked)
+        self.menu_sidebar.balloon_dl_button.clicked.connect(self.on_balloon_dl_clicked)
+        self.menu_sidebar.balloon_classic_button.clicked.connect(self.on_balloon_classic_clicked)
+        self.menu_sidebar.friend_foe_dl_button.clicked.connect(self.on_friend_foe_dl_clicked)
+        self.menu_sidebar.friend_foe_classic_button.clicked.connect(self.on_friend_foe_classic_clicked)
+        self.menu_sidebar.engagement_dl_button.clicked.connect(self.on_engagement_dl_clicked)
+        self.menu_sidebar.engagement_hybrid_button.clicked.connect(self.on_engagement_hybrid_clicked)
         self.menu_sidebar.fps_button.clicked.connect(self.on_fps_clicked)
         self.menu_sidebar.theme_button.clicked.connect(self.toggle_theme)
         self.menu_sidebar.exit_button.clicked.connect(self.on_exit_clicked)
+        self.menu_sidebar.emergency_stop_button.clicked.connect(self.on_emergency_stop_clicked)
         
         # Base directory for icons - use absolute path
         icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
@@ -747,7 +751,7 @@ class MainWindow(QMainWindow):
     
     def init_yolo(self):
         """Initialize the YOLO service."""
-        model_path = "C:\\Users\\USER\\Desktop\\pyqt\\camera_app\\models\\bests_balloon_30_dark.pt"
+        model_path = "C:\\Users\\Administrator\\Desktop\\gok-2025\\teknofest\\camera_app\\models\\bests_balloon_30_dark.pt"
         self.yolo_service = YoloService(model_path)
         
         # YOLO servisini kamera servisine bağla
@@ -804,7 +808,7 @@ class MainWindow(QMainWindow):
     def init_roboflow(self):
         """Initialize the Roboflow service."""
         # Tam yolu belirtelim
-        model_path = "C:\\Users\\USER\\Desktop\\pyqt\\camera_app\\models\\engagement-best.pt"
+        model_path = "C:\\Users\\Administrator\\Desktop\\gok-2025\\teknofest\\camera_app\\models\\engagement-best.pt"
         
         # Dosyanın varlığını kontrol edelim
         if not os.path.exists(model_path):
@@ -987,4 +991,148 @@ class MainWindow(QMainWindow):
             self.logger.info("Kullanıcı çıkışı onayladı")
             self.close()
         else:
-            self.logger.info("Çıkış kullanıcı tarafından iptal edildi") 
+            self.logger.info("Çıkış kullanıcı tarafından iptal edildi")
+
+    def on_emergency_stop_clicked(self):
+        """Handle emergency stop button click."""
+        self.logger.info("ACİL STOP: Tüm işlemler durduruldu")
+        
+        # Stop camera
+        if hasattr(self, 'camera_service') and self.camera_service:
+            self.camera_service.stop()
+            self.logger.info("Kamera durduruldu")
+            
+        # Reset all detection buttons to unchecked state
+        self.menu_sidebar.balloon_dl_button.setChecked(False)
+        self.menu_sidebar.balloon_classic_button.setChecked(False)
+        self.menu_sidebar.friend_foe_dl_button.setChecked(False)
+        self.menu_sidebar.friend_foe_classic_button.setChecked(False)
+        self.menu_sidebar.engagement_dl_button.setChecked(False)
+        self.menu_sidebar.engagement_hybrid_button.setChecked(False)
+        
+        # Disable all active detections
+        self.camera_view.set_detection_active(False)
+        
+        # Set warning message on camera view
+        self.camera_view.show_message("ACİL STOP ETKİN!", QColor(255, 0, 0), 5000)
+        
+        # Update view with static image or warning screen
+        self.camera_view.show_emergency_stop()
+        
+        # Update UI state
+        self.emergency_mode = True
+        
+        # Show restart instruction
+        QMessageBox.warning(self, "ACİL STOP", 
+                            "Tüm işlemler durduruldu.\nYeniden başlatmak için uygulamayı kapatıp tekrar açın.")
+
+    def on_balloon_dl_clicked(self):
+        """Handle balloon detection with deep learning button click."""
+        is_active = self.menu_sidebar.balloon_dl_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_dl_button)
+        
+        # This uses the existing YOLO service
+        if is_active:
+            self.logger.info("Hareketli Balon Modu (Derin Öğrenme) aktif edildi")
+            self.init_yolo()  # Initialize YOLO if needed
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("yolo")
+        else:
+            self.logger.info("Hareketli Balon Modu (Derin Öğrenme) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+
+    def on_balloon_classic_clicked(self):
+        """Handle balloon detection with classical methods button click."""
+        is_active = self.menu_sidebar.balloon_classic_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_classic_button)
+            
+        if is_active:
+            self.logger.info("Hareketli Balon Modu (Klasik Yöntemler) aktif edildi")
+            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+        else:
+            self.logger.info("Hareketli Balon Modu (Klasik Yöntemler) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+
+    def on_friend_foe_dl_clicked(self):
+        """Handle friend/foe detection with deep learning button click."""
+        is_active = self.menu_sidebar.friend_foe_dl_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.friend_foe_dl_button)
+            
+        if is_active:
+            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenme) aktif edildi")
+            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+        else:
+            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenme) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+
+    def on_friend_foe_classic_clicked(self):
+        """Handle friend/foe detection with classical methods button click."""
+        is_active = self.menu_sidebar.friend_foe_classic_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.friend_foe_classic_button)
+            
+        if is_active:
+            self.logger.info("Hareketli Dost/Düşman Modu (Klasik Yöntemler) aktif edildi")
+            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+        else:
+            self.logger.info("Hareketli Dost/Düşman Modu (Klasik Yöntemler) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+
+    def on_engagement_dl_clicked(self):
+        """Handle engagement detection with deep learning button click."""
+        is_active = self.menu_sidebar.engagement_dl_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_dl_button)
+        
+        # This uses the existing Roboflow service
+        if is_active:
+            self.logger.info("Angajman Modu (Derin Öğrenme) aktif edildi")
+            self.init_roboflow()  # Initialize Roboflow if needed
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("roboflow")
+        else:
+            self.logger.info("Angajman Modu (Derin Öğrenme) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+
+    def on_engagement_hybrid_clicked(self):
+        """Handle engagement detection with hybrid methods button click."""
+        is_active = self.menu_sidebar.engagement_hybrid_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_hybrid_button)
+            
+        if is_active:
+            self.logger.info("Angajman Modu (Hibrit) aktif edildi")
+            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+        else:
+            self.logger.info("Angajman Modu (Hibrit) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+    
+    def _uncheck_other_detection_buttons(self, current_button):
+        """Uncheck all detection buttons except the current one."""
+        buttons = [
+            self.menu_sidebar.balloon_dl_button,
+            self.menu_sidebar.balloon_classic_button,
+            self.menu_sidebar.friend_foe_dl_button,
+            self.menu_sidebar.friend_foe_classic_button,
+            self.menu_sidebar.engagement_dl_button,
+            self.menu_sidebar.engagement_hybrid_button
+        ]
+        
+        for button in buttons:
+            if button != current_button:
+                button.setChecked(False) 

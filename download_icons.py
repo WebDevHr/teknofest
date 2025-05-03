@@ -13,10 +13,12 @@ import time
 from io import BytesIO
 from PIL import Image
 
-# Create icons directory if it doesn't exist
-if not os.path.exists("icons"):
-    os.makedirs("icons")
-    print("Created icons directory")
+# Create icons directory if it doesn't exist (in camera_app directory)
+camera_app_dir = "camera_app"
+icons_dir = os.path.join(camera_app_dir, "icons")
+if not os.path.exists(icons_dir):
+    os.makedirs(icons_dir)
+    print(f"Created icons directory at {icons_dir}")
 
 # List of icons to download
 icons = {
@@ -29,12 +31,14 @@ icons = {
     "speedometer.png": "https://img.icons8.com/ios-filled/50/speedometer.png",
     "theme.png": "https://img.icons8.com/ios-filled/50/day-and-night.png",
     "exit.png": "https://img.icons8.com/ios-filled/50/exit.png",
-    "trash.png": "https://img.icons8.com/ios-filled/50/trash.png"
+    "trash.png": "https://img.icons8.com/ios-filled/50/trash.png",
+    "moon.png": "https://img.icons8.com/ios-filled/50/moon-symbol.png",
+    "sun.png": "https://img.icons8.com/ios-filled/50/sun.png"
 }
 
 # Download each icon
 for filename, url in icons.items():
-    filepath = os.path.join("icons", filename)
+    filepath = os.path.join(icons_dir, filename)
     
     # Skip if file already exists
     if os.path.exists(filepath):

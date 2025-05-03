@@ -22,7 +22,7 @@ class RoboflowService(QObject):
     # Signals
     detection_ready = pyqtSignal(object, list)  # frame, detections
     
-    def __init__(self, model_path="models/engagement-best.pt"):
+    def __init__(self, model_path="C:\\Users\\Administrator\\Desktop\\gok-2025\\teknofest\\camera_app\\models\\engagement-best.pt"):
         super().__init__()
         self.logger = LoggerService()
         self.model_path = model_path

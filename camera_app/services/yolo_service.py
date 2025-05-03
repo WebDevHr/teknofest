@@ -22,7 +22,7 @@ class YoloService(QObject):
     # Signals
     detection_ready = pyqtSignal(object, list)  # frame, detections
     
-    def __init__(self, model_path="C:\\Users\\USER\\Desktop\\pyqt\\camera_app\\models\\bests_balloon_30_dark.pt"):
+    def __init__(self, model_path="C:\\Users\\Administrator\\Desktop\\gok-2025\\teknofest\\camera_app\\models\\bests_balloon_30_dark.pt"):
         super().__init__()
         self.logger = LoggerService()
         self.model_path = model_path
