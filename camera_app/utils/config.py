@@ -7,6 +7,24 @@ Configuration Utilities
 Configuration settings for the application.
 """
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Proje kök dizini - Bu kodun iki seviye üzerindedir (utils -> camera_app -> kök)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# camera_app dizini
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# .env dosyasını camera_app klasörü altında yükle
+env_path = Path(APP_DIR) / '.env'
+load_dotenv(dotenv_path=env_path)
+
+# Alt dizinleri tanımla
+DEFAULT_DATA_DIR = os.path.join(ROOT_DIR, 'data')
+DEFAULT_MODELS_DIR = os.path.join(APP_DIR, 'models')
+
 class Config:
     """
     Configuration settings for the application.
@@ -36,9 +54,18 @@ class Config:
         self.log_sidebar_width = 300
         self.menu_sidebar_width = 250
         
-        # File paths
-        self.captures_dir = "captures"
-        self.logs_dir = "logs"
+        # Yol ayarları
+        # Data dizini (logs, captures, etc.)
+        self.data_dir = os.getenv('DATA_DIR', DEFAULT_DATA_DIR)
+        
+        # Alt dizinler
+        self.logs_dir = os.path.join(self.data_dir, 'logs')
+        self.captures_dir = os.path.join(self.data_dir, 'captures')
+        
+        # Model dizini ve model dosyaları 
+        self.model_dir = os.getenv('MODEL_DIR', DEFAULT_MODELS_DIR)
+        self.balloon_model = os.getenv('BALLOON_MODEL', 'bests_balloon_30_dark.pt')
+        self.engagement_model = os.getenv('ENGAGEMENT_MODEL', 'engagement-best.pt')
     
     def get(self, key, default=None):
         """Get a configuration value."""
@@ -46,4 +73,50 @@ class Config:
     
     def set(self, key, value):
         """Set a configuration value."""
-        setattr(self, key, value) 
+        setattr(self, key, value)
+    
+    def ensure_dirs_exist(self):
+        """Ensure that all required directories exist."""
+        # Ana veri dizinini oluştur
+        os.makedirs(self.data_dir, exist_ok=True)
+        
+        # Alt dizinleri oluştur
+        os.makedirs(self.logs_dir, exist_ok=True)
+        os.makedirs(self.captures_dir, exist_ok=True)
+        os.makedirs(self.model_dir, exist_ok=True)
+        
+        return True
+        
+    def get_model_dir(self):
+        """Get the model directory"""
+        if not os.path.exists(self.model_dir):
+            print(f"Warning: Model directory {self.model_dir} not found. Using default: {DEFAULT_MODELS_DIR}")
+            return DEFAULT_MODELS_DIR
+        return self.model_dir
+    
+    def get_model_path(self, model_name):
+        """Get the full path of a model file."""
+        model_dir = self.get_model_dir()
+        model_path = os.path.join(model_dir, model_name)
+        
+        # If model doesn't exist, look for it in the default directory
+        if not os.path.exists(model_path):
+            default_path = os.path.join(DEFAULT_MODELS_DIR, model_name)
+            if os.path.exists(default_path):
+                return default_path
+            else:
+                print(f"Warning: Model {model_name} not found in {model_dir} or {DEFAULT_MODELS_DIR}")
+                return None
+        
+        return model_path
+    
+    def get_balloon_model_path(self):
+        """Get path to balloon detection model."""
+        return self.get_model_path(self.balloon_model)
+    
+    def get_engagement_model_path(self):
+        """Get path to engagement model."""
+        return self.get_model_path(self.engagement_model)
+
+# Create a singleton instance for easy import
+config = Config() 

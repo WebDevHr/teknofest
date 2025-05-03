@@ -16,14 +16,17 @@ from services.logger_service import LoggerService
 import cv2
 import numpy as np
 
+# utils.config modülü içinde .env dosyası zaten yükleniyor
+# böylece bu dosyayı import ettiğimizde çevresel değişkenler otomatik yüklenir
+from utils.config import config
+
 def main():
     # Initialize application
     app = QApplication(sys.argv)
     
-    # Create necessary directories
-    os.makedirs("models", exist_ok=True)
-    os.makedirs("captures", exist_ok=True)
-    os.makedirs("logs", exist_ok=True)
+    # Gerekli dizinlerin varlığını kontrol et ve oluştur
+    # Bu merkezi bir fonksiyon sayesinde tüm dizinleri bir yerden yönetiyoruz
+    config.ensure_dirs_exist()
     
     # Initialize logger service (singleton)
     logger = LoggerService()

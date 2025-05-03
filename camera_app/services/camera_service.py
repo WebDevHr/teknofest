@@ -14,6 +14,7 @@ from datetime import datetime
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from PyQt5.QtGui import QImage
 from services.logger_service import LoggerService
+from utils.config import config
 
 class CameraService(QObject):
     """
@@ -170,11 +171,14 @@ class CameraService(QObject):
         self.logger.info(f"FPS display {'enabled' if self.show_fps else 'disabled'}")
         return self.show_fps
     
-    def capture_image(self, directory="captures"):
+    def capture_image(self):
         """Capture and save the current frame."""
         if not self.capture or not self.capture.isOpened():
             self.logger.error("Cannot capture: Camera not available")
             return None
+            
+        # Get the captures directory from config
+        directory = config.captures_dir
             
         # Create directory if it doesn't exist
         if not os.path.exists(directory):
@@ -182,7 +186,7 @@ class CameraService(QObject):
             
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{directory}/capture_{timestamp}.png"
+        filename = os.path.join(directory, f"capture_{timestamp}.png")
         
         # Capture frame
         ret, frame = self.capture.read()

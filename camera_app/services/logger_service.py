@@ -10,6 +10,7 @@ Singleton service for logging application events.
 import os
 from datetime import datetime
 from PyQt5.QtCore import QObject, pyqtSignal, QMutex
+from utils.config import config
 
 class LoggerService(QObject):
     """
@@ -35,13 +36,16 @@ class LoggerService(QObject):
         self.log_file = None
         self.mutex = QMutex()  # Add mutex for thread safety
         
+        # Logs dizinini config'den al
+        logs_dir = config.logs_dir
+        
         # Create logs directory if it doesn't exist
-        if not os.path.exists("logs"):
-            os.makedirs("logs")
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir)
             
         # Create log file with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = f"logs/app_log_{timestamp}.txt"
+        self.log_file = os.path.join(logs_dir, f"app_log_{timestamp}.txt")
         
         # Write header to log file
         with open(self.log_file, "w") as f:

@@ -22,6 +22,7 @@ from services.roboflow_service import RoboflowService
 from ui.sidebar import LogSidebar, MenuSidebar, IconThemeManager
 from ui.camera_view import CameraView
 from ui.shape_dialog import ShapeDetectionDialog
+from utils.config import config
 
 class MainWindow(QMainWindow):
     """
@@ -751,7 +752,12 @@ class MainWindow(QMainWindow):
     
     def init_yolo(self):
         """Initialize the YOLO service."""
-        model_path = "C:\\Users\\Administrator\\Desktop\\gok-2025\\teknofest\\camera_app\\models\\bests_balloon_30_dark.pt"
+        model_path = config.get_balloon_model_path()
+        if not model_path:
+            self.logger.error("YOLO model dosyası bulunamadı")
+            QMessageBox.warning(self, "YOLO Hatası", "YOLO model dosyası bulunamadı. .env dosyasındaki MODEL_DIR ve BALLOON_MODEL değişkenlerini kontrol edin.")
+            return False
+            
         self.yolo_service = YoloService(model_path)
         
         # YOLO servisini kamera servisine bağla
@@ -807,13 +813,13 @@ class MainWindow(QMainWindow):
     
     def init_roboflow(self):
         """Initialize the Roboflow service."""
-        # Tam yolu belirtelim
-        model_path = "C:\\Users\\Administrator\\Desktop\\gok-2025\\teknofest\\camera_app\\models\\engagement-best.pt"
+        # config modülünden model yolunu al
+        model_path = config.get_engagement_model_path()
         
         # Dosyanın varlığını kontrol edelim
-        if not os.path.exists(model_path):
-            self.logger.error(f"Roboflow modeli bulunamadı: {model_path}")
-            QMessageBox.warning(self, "Roboflow Hatası", f"Roboflow modeli şu konumda bulunamadı: {model_path}\nLütfen model dosyasının var olduğundan emin olun.")
+        if not model_path:
+            self.logger.error("Roboflow modeli bulunamadı")
+            QMessageBox.warning(self, "Roboflow Hatası", "Roboflow model dosyası bulunamadı. .env dosyasındaki MODEL_DIR ve ENGAGEMENT_MODEL değişkenlerini kontrol edin.")
             return False
         
         self.roboflow_service = RoboflowService(model_path)
