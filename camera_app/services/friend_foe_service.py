@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-YOLO Detection Service
+Friend/Foe Detector Service
 ---------------------
-Service for handling object detection using YOLO model.
+Service for detecting friends and foes using YOLO model.
+For 2. Aşama - Hareketli Dost/Düşman Mode (Derin Öğrenmeli)
 """
 
 import cv2
@@ -16,17 +17,24 @@ from services.logger_service import LoggerService
 from ultralytics import YOLO
 from collections import defaultdict
 
-class YoloService(QObject):
+class FriendFoeService(QObject):
     """
-    Service for handling object detection using YOLO model.
+    Service for detecting friend and foe objects using YOLO model.
     """
     # Signals
     detection_ready = pyqtSignal(object, list)  # frame, detections
     
-    def __init__(self, model_path="C:\\Users\\Administrator\\Desktop\\gok-2025\\teknofest\\camera_app\\models\\bests_balloon_30_dark.pt"):
+    def __init__(self, model_path=None):
         super().__init__()
         self.logger = LoggerService()
-        self.model_path = model_path
+        
+        # Set default model path if not provided
+        if model_path is None:
+            self.model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                         "models", "friend_foe(v8n).pt")
+        else:
+            self.model_path = model_path
+            
         self.model = None
         self.is_initialized = False
         self.is_running = False
@@ -38,17 +46,17 @@ class YoloService(QObject):
         else:
             self.logger.info("GPU kullanılamıyor - CPU kullanılacak")
         
-        # Daha geniş bir sınıf listesi oluşturalım veya modelden alalım
-        self.class_names = ["balon"]  # Varsayılan
+        # Friend/Foe class names
+        self.class_names = ["dost", "dusman"]  # Varsayılan
 
-        # Tracking related variables
-        self.track_history = defaultdict(lambda: [])
-        self.max_track_history = 30
-        
         # Performans için ek ayarlar
         self.last_frame_detections = []
         self.skip_frames = 0
         self.max_skip_frames = 1  # Her 2 karede bir tespit yap
+        
+        # Tracking related variables
+        self.track_history = defaultdict(lambda: [])
+        self.max_track_history = 30
         
     def initialize(self, model_path=None):
         """Initialize the YOLO model."""
@@ -56,14 +64,14 @@ class YoloService(QObject):
             self.model_path = model_path
             
         if not self.model_path or not os.path.exists(self.model_path):
-            self.logger.error(f"YOLO model not found at: {self.model_path}")
+            self.logger.error(f"Dost/Düşman dedektör model dosyası bulunamadı: {self.model_path}")
             return False
             
         try:
             # Cihaz seçimi - GPU varsa GPU, yoksa CPU kullan
             device = 0 if self.use_gpu else 'cpu'  # 0 = ilk GPU
             
-            # YOLOv8 modelini yükle - ByteTrack için adres belirt
+            # YOLOv8 modelini yükle
             self.model = YOLO(self.model_path)
             
             # Model cihazını ayarla
@@ -73,36 +81,34 @@ class YoloService(QObject):
             self.class_names = self.model.names
             
             # Log success
-            self.logger.info(f"YOLO modeli yüklendi: {self.model_path}, Cihaz: {device}")
+            self.logger.info(f"Dost/Düşman dedektör modeli yüklendi: {self.model_path}, Cihaz: {device}")
             self.is_initialized = True
             return True
         except Exception as e:
-            self.logger.error(f"Failed to load YOLO model: {str(e)}")
+            self.logger.error(f"Dost/Düşman dedektör modeli yüklenemedi: {str(e)}")
             return False
     
     def start(self):
         """Start the detection service."""
         if not self.is_initialized:
-            self.logger.error("YOLO model not initialized")
+            self.logger.error("Dost/Düşman dedektör modeli initialize edilmedi")
             return False
             
         self.is_running = True
         self.skip_frames = 0
         # Log
-        self.logger.info("YOLO algılama servisi başlatıldı")
+        self.logger.info("Dost/Düşman dedektör servisi başlatıldı")
         return True
     
     def stop(self):
         """Stop the detection service."""
         self.is_running = False
-        # Track geçmişini temizle
-        self.track_history.clear()
         # Log
-        self.logger.info("YOLO algılama servisi durduruldu")
+        self.logger.info("Dost/Düşman dedektör servisi durduruldu")
     
     def detect(self, frame):
         """
-        Detect objects in a frame and track them.
+        Detect friend/foe objects in a frame.
         
         Args:
             frame: OpenCV image (BGR format)
@@ -136,8 +142,8 @@ class YoloService(QObject):
                 persist=True, 
                 tracker="bytetrack.yaml", 
                 verbose=False, 
-                conf=0.25,  # Güven eşiği - düşük değer daha fazla tespit (ama yanlış pozitif olabilir)
-                iou=0.45,   # IOU eşiği - kutuların çakışması için
+                conf=0.25,  # Güven eşiği
+                iou=0.45,   # IOU eşiği
                 half=half,  # Half precision için
                 imgsz=img_size,  # Resim boyutu
                 max_det=20,  # Maksimum tespit sayısı
@@ -155,7 +161,7 @@ class YoloService(QObject):
             return detections
             
         except Exception as e:
-            self.logger.error(f"Error during detection and tracking: {str(e)}")
+            self.logger.error(f"Dost/Düşman tespiti sırasında hata: {str(e)}")
             return []
     
     def _process_results(self, results, frame_shape):
@@ -210,77 +216,120 @@ class YoloService(QObject):
         return detections
     
     def draw_detections(self, frame, detections):
-        """Draw detection boxes, tracking IDs, and confidence values on the frame."""
-        # If no detections, return the original frame without any overlay
+        """Draw detection boxes on the frame with transparent overlay."""
         if not detections:
             return frame
             
-        # Create a black mask for the entire frame (for opacity overlay)
+        # Work on a copy of the frame
+        output = frame.copy()
+        
+        # Create a mask for the enemy (dusman) detections (to create a dark transparent overlay)
         height, width = frame.shape[:2]
         mask = np.zeros((height, width), dtype=np.uint8)
         
-        # Mark balloon regions in the mask
+        # Get the dusman class id
+        dusman_class_id = -1
+        dusman_names = ['dusman', 'düşman', 'enemy']  # Possible enemy class names
+        
+        # Check for possible enemy class names
+        for enemy_name in dusman_names:
+            if enemy_name in self.class_names:
+                dusman_class_id = self.class_names.index(enemy_name)
+                break
+                
+        if dusman_class_id == -1:
+            # As fallback, try to use class with index 1 (assuming binary classification)
+            if len(self.class_names) > 1:
+                dusman_class_id = 1
+        
+        # Mark enemy regions in the mask
         for detection in detections:
-            x, y, w, h, confidence, class_id, track_id = detection
+            class_id = detection[5]
             
-            # Ensure coordinates are within frame boundaries
-            x = max(0, x)
-            y = max(0, y)
-            x2 = min(width, x + w)
-            y2 = min(height, y + h)
-            
-            # Check if this is a balloon class
-            class_name = "unknown"
-            if class_id < len(self.class_names):
-                class_name = self.class_names[class_id]
-            
-            # Mark all detected regions in the mask, not just balloons
-            mask[y:y2, x:x2] = 255
+            if class_id == dusman_class_id:  # If this is a dusman (enemy)
+                x, y, w, h = detection[:4]
+                
+                # Make sure coordinates are valid
+                x = max(0, int(x))
+                y = max(0, int(y))
+                x2 = min(width, x + int(w))
+                y2 = min(height, y + int(h))
+                
+                # Fill the detected region in the mask
+                mask[y:y2, x:x2] = 255
         
         # Create a semi-transparent black overlay
         overlay = frame.copy()
-        # Apply black color on the regions that are not inside bounding boxes (where mask is 0)
+        # Apply black color on the regions that are not inside enemy bounding boxes (where mask is 0)
         overlay[mask == 0] = [0, 0, 0]  # Black color
         
         # Blend the original frame with the overlay
-        alpha = 0.2  # 20% of original image (80% opacity for black overlay)
-        frame = cv2.addWeighted(overlay, 1-alpha, frame, alpha, 0)
+        alpha = 0.3  # 30% of original image (70% opacity for black overlay)
+        output = cv2.addWeighted(overlay, 1-alpha, frame, alpha, 0)
         
-        # Now draw boxes and labels on the frame
+        # Now draw the detections
         for detection in detections:
-            x, y, w, h, confidence, class_id, track_id = detection
+            x, y, w, h = detection[:4]
+            class_id = detection[5]
+            track_id = detection[6] if len(detection) > 6 else -1
             
-            # Sınırları kontrol et
-            x = max(0, x)
-            y = max(0, y)
+            # Make sure coordinates are valid
+            x = max(0, int(x))
+            y = max(0, int(y))
+            w = int(w)
+            h = int(h)
             
-            # Dikdörtgen çiz
-            color = (0, 255, 0)  # Yeşil
-            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+            # Ensure bounds are within frame
+            if x + w > width:
+                w = width - x
+            if y + h > height:
+                h = height - y
+                
+            if w <= 0 or h <= 0:
+                continue
             
-            # Sınıf adını güvenli bir şekilde al
+            # Get class name
             class_name = "unknown"
             if class_id < len(self.class_names):
                 class_name = self.class_names[class_id]
             
-            # Etiket metni - şimdi ID de içeriyor
-            label = f"{class_name}: {confidence:.2f}"
-            if track_id >= 0:
-                label = f"{class_name} ID:{track_id}: {confidence:.2f}"
+            # Color scheme for friend/foe detection
+            friend_foe_colors = {
+                'dost': (0, 255, 0),     # Green for friends
+                'dusman': (0, 0, 255),    # Red for enemies
+                'düşman': (0, 0, 255),    # Red for enemies (Turkish)
+                'enemy': (0, 0, 255)      # Red for enemies (English)
+            }
             
-            # Etiket arkaplanı
-            text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
-            cv2.rectangle(frame, (x, y - 20), (x + text_size[0], y), color, -1)
+            # Choose color based on class name
+            color = (0, 255, 0)  # Default green
+            if class_name in friend_foe_colors:
+                color = friend_foe_colors[class_name]
             
-            # Etiket metni
-            cv2.putText(frame, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            # Draw rectangle around detected object
+            cv2.rectangle(output, (x, y), (x + w, y + h), color, 2)
             
-            # Track çizgisini çiz (track_id varsa)
-            if track_id >= 0 and track_id in self.track_history and len(self.track_history[track_id]) > 1:
+            # Prepare label text with confidence
+            conf = detection[4]
+            label = f"{class_name}: {conf:.2f}"
+            if track_id != -1:
+                label += f" ID:{track_id}"
+            
+            # Draw label background
+            text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+            cv2.rectangle(output, (x, y - 20), (x + text_size[0], y), color, -1)
+            
+            # Draw label text (with black color for better visibility)
+            cv2.putText(output, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+            
+            # Draw tracking lines if track_id is available
+            if track_id != -1 and track_id in self.track_history:
                 track = self.track_history[track_id]
-                # Track'in noktalarını numpy dizisine dönüştür
-                points = np.array(track, dtype=np.int32).reshape((-1, 1, 2))
-                # Tracking çizgisini çiz
-                cv2.polylines(frame, [points], isClosed=False, color=(230, 230, 230), thickness=2)
-            
-        return frame 
+                
+                # Draw the tracking line
+                if len(track) > 1:
+                    # Draw lines connecting previous positions
+                    points = np.array(track, dtype=np.int32).reshape((-1, 1, 2))
+                    cv2.polylines(output, [points], False, color, 2)
+        
+        return output 

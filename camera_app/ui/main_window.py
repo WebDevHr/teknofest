@@ -16,9 +16,10 @@ from datetime import datetime
 
 from services.logger_service import LoggerService
 from services.camera_service import CameraService
-from services.yolo_service import YoloService
-from services.shape_detection_service import ShapeDetectionService
-from services.roboflow_service import RoboflowService
+from services.balloon_detector_service import BalloonDetectorService
+from services.friend_foe_service import FriendFoeService
+from services.engagement_mode_service import EngagementModeService
+from services.mock_service import MockService
 from ui.sidebar import LogSidebar, MenuSidebar, IconThemeManager
 from ui.camera_view import CameraView
 from ui.shape_dialog import ShapeDetectionDialog
@@ -733,46 +734,121 @@ class MainWindow(QMainWindow):
         
         if button.isChecked():
             # İlk kez tıklandıysa YOLO servisini başlat
-            if not hasattr(self, 'yolo_service'):
+            if not hasattr(self, 'balloon_detector'):
                 if not self.init_yolo():
                     button.setChecked(False)
                     return
             
             # YOLO tespitini başlat
-            self.yolo_service.start()
+            self.balloon_detector.start()
             self.logger.info("YOLO tespiti başlatıldı")
             button.setText("Tespiti Durdur")
         else:
             # YOLO tespitini durdur
-            if hasattr(self, 'yolo_service'):
-                self.yolo_service.stop()
+            if hasattr(self, 'balloon_detector'):
+                self.balloon_detector.stop()
                 self.logger.info("YOLO tespiti durduruldu")
             button.setText("YOLO Tespiti")
     
     def init_yolo(self):
-        """Initialize the YOLO service with ByteTrack tracking."""
-        model_path = config.get_balloon_model_path()
-        if not model_path:
-            self.logger.error("YOLO model dosyası bulunamadı")
-            QMessageBox.warning(self, "YOLO Hatası", "YOLO model dosyası bulunamadı. .env dosyasındaki MODEL_DIR ve BALLOON_MODEL değişkenlerini kontrol edin.")
-            return False
+        """Initialize the YOLO service for balloon tracking."""
+        if not hasattr(self, 'balloon_detector') or not self.balloon_detector:
+            # Create balloon detector service
+            self.balloon_detector = BalloonDetectorService()
             
-        self.yolo_service = YoloService(model_path)
+            # Connect to camera service
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.balloon_detector)
+            
+            # Initialize service
+            if not self.balloon_detector.initialize():
+                self.logger.error("Failed to initialize Balloon detector service")
+                return
+            
+            # Configure Kalman filter settings
+            self.balloon_detector.use_kalman = True
+            self.balloon_detector.show_kalman_debug = True
+            
+            self.logger.info("Balon dedektör servisi ve Kalman filtresi başlatıldı")
+            
+        # Start service
+        self.balloon_detector.start()
+
+    def init_friend_foe_detector(self):
+        """Initialize the service for friend/foe detection using the friend_foe(v8n).pt model."""
+        if not hasattr(self, 'friend_foe_detector') or not self.friend_foe_detector:
+            # Create friend/foe detector service
+            self.friend_foe_detector = FriendFoeService()
+            
+            # Connect to camera service
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.friend_foe_detector)
+            
+            # Initialize service
+            if not self.friend_foe_detector.initialize():
+                self.logger.error("Failed to initialize Friend/Foe detector service")
+                return
+            
+            self.logger.info("Dost/Düşman dedektör servisi başlatıldı - 2 sınıf: dost, dusman")
+            
+        # Start service
+        self.friend_foe_detector.start()
+    
+    def init_engagement_detector(self):
+        """Initialize the service for engagement mode using the engagement-best.pt model."""
+        if not hasattr(self, 'engagement_detector') or not self.engagement_detector:
+            # Create engagement detector service
+            self.engagement_detector = EngagementModeService()
+            
+            # Connect to camera service
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.engagement_detector)
+            
+            # Initialize service
+            if not self.engagement_detector.initialize():
+                self.logger.error("Failed to initialize Engagement detector service")
+                return
+            
+            self.logger.info("Angajman dedektör servisi başlatıldı - 9 sınıf: red-circle, red-square, red-triangle, blue-circle, blue-square, blue-triangle, green-circle, green-square, green-triangle")
+            
+        # Start service
+        self.engagement_detector.start()
+
+    def init_mock_service(self, name):
+        """Initialize a mock service for non-implemented methods."""
+        mock_service = MockService(service_name=name)
         
-        # YOLO servisini kamera servisine bağla
-        self.camera_service.set_yolo_service(self.yolo_service)
+        # Connect to camera service
+        if hasattr(self, 'camera_service') and self.camera_service:
+            self.camera_service.set_detector_service(mock_service)
         
-        # YOLO modelini başlat
-        if not self.yolo_service.initialize():
-            self.logger.error("YOLO modeli başlatılamadı")
-            QMessageBox.warning(self, "YOLO Hatası", "YOLO modeli başlatılamadı. Model dosyasının var olduğunu kontrol edin.")
-            return False
+        mock_service.initialize()
+        mock_service.start()
+        return mock_service
+
+    def on_engagement_dl_clicked(self):
+        """Handle engagement detection with deep learning button click."""
+        is_active = self.menu_sidebar.engagement_dl_button.isChecked()
         
-        # YOLO servisini başlat
-        self.yolo_service.start()
-        self.logger.info(f"YOLO modeli başlatıldı ve ByteTrack tracking aktif: {model_path}")
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_dl_button)
+            
+            # Stop other active services
+            self._stop_all_detection_services()
         
-        return True
+        # This uses the engagement detector service with engagement-best.pt model
+        if is_active:
+            self.logger.info("Angajman Modu (Derin Öğrenmeli) aktif edildi - engagement-best.pt modeli kullanılıyor")
+            self.init_engagement_detector()  # Initialize Engagement detector if needed
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("engagement")
+        else:
+            self.logger.info("Angajman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+            # Stop the service if it exists
+            if hasattr(self, 'engagement_detector') and self.engagement_detector:
+                self.engagement_detector.stop()
     
     def closeEvent(self, event):
         """Handle window close event."""
@@ -1019,6 +1095,9 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.engagement_dl_button.setChecked(False)
         self.menu_sidebar.engagement_hybrid_button.setChecked(False)
         
+        # Stop all detection services
+        self._stop_all_detection_services()
+            
         # Disable all active detections
         self.camera_view.set_detection_active(False)
         
@@ -1033,7 +1112,28 @@ class MainWindow(QMainWindow):
         
         # Show restart instruction
         QMessageBox.warning(self, "ACİL STOP", 
-                            "Tüm işlemler durduruldu.\nYeniden başlatmak için uygulamayı kapatıp tekrar açın.")
+                          "Tüm işlemler durduruldu.\nYeniden başlatmak için uygulamayı kapatıp tekrar açın.")
+
+    def _stop_all_detection_services(self):
+        """Stop all detection services."""
+        if hasattr(self, 'balloon_detector') and self.balloon_detector:
+            self.balloon_detector.stop()
+            
+        if hasattr(self, 'friend_foe_detector') and self.friend_foe_detector:
+            self.friend_foe_detector.stop()
+            
+        if hasattr(self, 'engagement_detector') and self.engagement_detector:
+            self.engagement_detector.stop()
+            
+        # Stop any mock services
+        if hasattr(self, 'balloon_classic_mock') and self.balloon_classic_mock:
+            self.balloon_classic_mock.stop()
+            
+        if hasattr(self, 'friend_foe_classic_mock') and self.friend_foe_classic_mock:
+            self.friend_foe_classic_mock.stop()
+            
+        if hasattr(self, 'engagement_hybrid_mock') and self.engagement_hybrid_mock:
+            self.engagement_hybrid_mock.stop()
 
     def on_balloon_dl_clicked(self):
         """Handle balloon detection with deep learning button click."""
@@ -1042,16 +1142,22 @@ class MainWindow(QMainWindow):
         # Uncheck other buttons
         if is_active:
             self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_dl_button)
+            
+            # Stop other active services
+            self._stop_all_detection_services()
         
-        # This uses the existing YOLO service
+        # This uses the balloon detector service
         if is_active:
             self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli + ByteTrack) aktif edildi")
-            self.init_yolo()  # Initialize YOLO if needed
+            self.init_yolo()  # Initialize balloon detector if needed
             self.camera_view.set_detection_active(True)
-            self.camera_view.set_detection_mode("yolo")
+            self.camera_view.set_detection_mode("balloon")
         else:
             self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
+            # Stop the service if it exists
+            if hasattr(self, 'balloon_detector') and self.balloon_detector:
+                self.balloon_detector.stop()
 
     def on_balloon_classic_clicked(self):
         """Handle balloon detection with classical methods button click."""
@@ -1061,12 +1167,19 @@ class MainWindow(QMainWindow):
         if is_active:
             self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_classic_button)
             
+            # Stop other active services
+            self._stop_all_detection_services()
+            
         if is_active:
             self.logger.info("Hareketli Balon Modu (Klasik Yöntemler) aktif edildi")
-            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+            self.balloon_classic_mock = self.init_mock_service("Balon Klasik Yöntemler")
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("balloon_classic")
         else:
             self.logger.info("Hareketli Balon Modu (Klasik Yöntemler) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
+            if hasattr(self, 'balloon_classic_mock') and self.balloon_classic_mock:
+                self.balloon_classic_mock.stop()
 
     def on_friend_foe_dl_clicked(self):
         """Handle friend/foe detection with deep learning button click."""
@@ -1076,12 +1189,20 @@ class MainWindow(QMainWindow):
         if is_active:
             self._uncheck_other_detection_buttons(self.menu_sidebar.friend_foe_dl_button)
             
+            # Stop other active services
+            self._stop_all_detection_services()
+            
         if is_active:
-            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenmeli) aktif edildi")
-            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+            self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenmeli) aktif edildi - friend_foe(v8n).pt modeli kullanılıyor")
+            self.init_friend_foe_detector()  # Initialize Friend/Foe detector if needed
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("friend_foe")
         else:
             self.logger.info("Hareketli Dost/Düşman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
+            # Stop the service if it exists
+            if hasattr(self, 'friend_foe_detector') and self.friend_foe_detector:
+                self.friend_foe_detector.stop()
 
     def on_friend_foe_classic_clicked(self):
         """Handle friend/foe detection with classical methods button click."""
@@ -1091,30 +1212,19 @@ class MainWindow(QMainWindow):
         if is_active:
             self._uncheck_other_detection_buttons(self.menu_sidebar.friend_foe_classic_button)
             
+            # Stop other active services
+            self._stop_all_detection_services()
+            
         if is_active:
             self.logger.info("Hareketli Dost/Düşman Modu (Klasik Yöntemler) aktif edildi")
-            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+            self.friend_foe_classic_mock = self.init_mock_service("Dost/Düşman Klasik Yöntemler")
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("friend_foe_classic")
         else:
             self.logger.info("Hareketli Dost/Düşman Modu (Klasik Yöntemler) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
-
-    def on_engagement_dl_clicked(self):
-        """Handle engagement detection with deep learning button click."""
-        is_active = self.menu_sidebar.engagement_dl_button.isChecked()
-        
-        # Uncheck other buttons
-        if is_active:
-            self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_dl_button)
-        
-        # This uses the existing Roboflow service
-        if is_active:
-            self.logger.info("Angajman Modu (Derin Öğrenmeli) aktif edildi")
-            self.init_roboflow()  # Initialize Roboflow if needed
-            self.camera_view.set_detection_active(True)
-            self.camera_view.set_detection_mode("roboflow")
-        else:
-            self.logger.info("Angajman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
-            self.camera_view.set_detection_active(False)
+            if hasattr(self, 'friend_foe_classic_mock') and self.friend_foe_classic_mock:
+                self.friend_foe_classic_mock.stop()
 
     def on_engagement_hybrid_clicked(self):
         """Handle engagement detection with hybrid methods button click."""
@@ -1124,13 +1234,20 @@ class MainWindow(QMainWindow):
         if is_active:
             self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_hybrid_button)
             
+            # Stop other active services
+            self._stop_all_detection_services()
+            
         if is_active:
             self.logger.info("Angajman Modu (Hibrit) aktif edildi")
-            self.camera_view.set_detection_active(False)  # Currently just shows camera feed
+            self.engagement_hybrid_mock = self.init_mock_service("Angajman Hibrit Yöntemler")
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("engagement_hybrid")
         else:
             self.logger.info("Angajman Modu (Hibrit) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
-    
+            if hasattr(self, 'engagement_hybrid_mock') and self.engagement_hybrid_mock:
+                self.engagement_hybrid_mock.stop()
+
     def _uncheck_other_detection_buttons(self, current_button):
         """Uncheck all detection buttons except the current one."""
         buttons = [

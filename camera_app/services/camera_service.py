@@ -126,33 +126,13 @@ class CameraService(QObject):
                 self.frame_count = 0
             self.frame_count += 1
             
-            # Performans için resmi küçültebiliriz (isteğe bağlı)
-            # frame = cv2.resize(frame, (640, 480))
-            
-            # Şekil tespiti aktifse, tespit işlemini yap
-            if hasattr(self, 'shape_detection_service') and self.shape_detection_service.is_running:
-                # Tespit işlemi
-                shapes = self.shape_detection_service.detect(frame, self.frame_count)
+            # Check if we have an active detector service
+            if hasattr(self, 'detector_service') and self.detector_service and self.detector_service.is_running:
+                # Detect objects
+                detections = self.detector_service.detect(frame)
                 
-                # Şekil tespiti sonrası frame güncellenmiş olabilir, o yüzden yeni frame'i alalım
-                if hasattr(self.shape_detection_service, 'processed_frame'):
-                    frame = self.shape_detection_service.processed_frame
-            
-            # YOLO tespiti aktifse, tespit işlemini yap
-            if hasattr(self, 'yolo_service') and self.yolo_service.is_running:
-                # Tespit işlemi
-                detections = self.yolo_service.detect(frame)
-                
-                # Tespitleri çiz
-                frame = self.yolo_service.draw_detections(frame, detections)
-            
-            # Roboflow tespiti aktifse, tespit işlemini yap
-            if hasattr(self, 'roboflow_service') and self.roboflow_service.is_running:
-                # Tespit işlemi
-                detections = self.roboflow_service.detect(frame)
-                
-                # Tespitleri çiz
-                frame = self.roboflow_service.draw_detections(frame, detections)
+                # Draw detections on frame
+                frame = self.detector_service.draw_detections(frame, detections)
             
             # Draw FPS counter (after all processing)
             frame = self._draw_fps(frame)
@@ -207,19 +187,26 @@ class CameraService(QObject):
             return None
     
     def set_yolo_service(self, yolo_service):
-        """Set the YOLO service for object detection."""
+        """Set the YOLO detection service."""
         self.yolo_service = yolo_service
-        self.logger.info("YOLO servisi kameraya bağlandı")
-    
+        
     def set_shape_detection_service(self, shape_detection_service):
         """Set the shape detection service."""
         self.shape_detection_service = shape_detection_service
-        self.logger.info("Şekil algılama servisi kameraya bağlandı")
-    
+        
     def set_roboflow_service(self, roboflow_service):
-        """Set the Roboflow service for object detection."""
+        """Set the Roboflow detection service."""
         self.roboflow_service = roboflow_service
-        self.logger.info("Roboflow servisi kameraya bağlandı")
+
+    def set_detector_service(self, detector_service):
+        """Set the current active detector service."""
+        # Remove any previous detector service
+        if hasattr(self, 'detector_service') and self.detector_service:
+            self.detector_service.stop()
+            
+        # Set the new detector service
+        self.detector_service = detector_service
+        self.logger.info(f"Aktif dedektör değiştirildi: {detector_service.__class__.__name__}")
     
     def save_current_frame(self, filename):
         """Save the current frame to the specified file."""

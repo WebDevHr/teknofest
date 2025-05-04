@@ -129,6 +129,24 @@ class CameraView(QWidget):
         self.emergency_pixmap = None
         self.update()
     
+    def on_detection(self, frame, detections):
+        """Handle detection results from different services.
+        
+        Args:
+            frame: The video frame with detections drawn on it
+            detections: List of detection objects
+        """
+        if not self.detection_active:
+            return
+            
+        # Convert OpenCV BGR image to QImage
+        height, width, channel = frame.shape
+        bytes_per_line = 3 * width
+        q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
+        
+        # Update the view with the processed frame
+        self.update_frame(q_img)
+    
     def paintEvent(self, event):
         """Override paintEvent to handle custom drawing."""
         super().paintEvent(event)
@@ -233,10 +251,18 @@ class CameraView(QWidget):
         # Draw detection mode indicator if active
         if self.detection_active and self.detection_mode:
             mode_text = None
-            if self.detection_mode == "yolo":
+            if self.detection_mode == "balloon":
                 mode_text = "Hareketli Balon Modu (Derin Öğrenmeli + Tracking)"
-            elif self.detection_mode == "roboflow":
+            elif self.detection_mode == "balloon_classic":
+                mode_text = "Hareketli Balon Modu (Klasik Yöntemler)"
+            elif self.detection_mode == "friend_foe":
+                mode_text = "Hareketli Dost/Düşman Modu (Derin Öğrenmeli)"
+            elif self.detection_mode == "friend_foe_classic":
+                mode_text = "Hareketli Dost/Düşman Modu (Klasik Yöntemler)"
+            elif self.detection_mode == "engagement":
                 mode_text = "Angajman Modu (Derin Öğrenmeli)"
+            elif self.detection_mode == "engagement_hybrid":
+                mode_text = "Angajman Modu (Hibrit)"
                 
             if mode_text:
                 # Create semi-transparent background for mode text
