@@ -394,4 +394,34 @@ class BalloonDetectorService(QObject):
         if self.use_kalman and self.show_kalman_debug:
             output = self.kalman_service.draw_debug(output)
         
+        # Draw crosshair at the center of the frame
+        center_x = width // 2
+        center_y = height // 2
+        
+        # Set crosshair properties
+        crosshair_color = (0, 0, 255)  # Kırmızı (BGR formatında)
+        crosshair_size = 20
+        crosshair_thickness = 2
+        
+        # Draw horizontal line of the crosshair
+        cv2.line(output, 
+                (center_x - crosshair_size, center_y), 
+                (center_x + crosshair_size, center_y), 
+                crosshair_color, 
+                crosshair_thickness)
+        
+        # Draw vertical line of the crosshair
+        cv2.line(output, 
+                (center_x, center_y - crosshair_size), 
+                (center_x, center_y + crosshair_size), 
+                crosshair_color, 
+                crosshair_thickness)
+        
+        # Draw a small circle at the center for better visibility
+        cv2.circle(output, 
+                 (center_x, center_y), 
+                 2, 
+                 crosshair_color, 
+                 -1)  # -1 thickness means filled circle
+        
         return output 

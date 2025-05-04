@@ -428,6 +428,8 @@ class MenuSidebar(Sidebar):
         self.save_button.setToolTip("Kaydet")
         self.fps_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "speedometer.png"), icon_only=True)
         self.fps_button.setToolTip("FPS Göster")
+        self.tracking_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "target.png"), icon_only=True, checkable=True)
+        self.tracking_button.setToolTip("Balon Takibi")
         
         # Create a horizontal layout for the bottom buttons
         self.bottom_buttons_layout = QHBoxLayout()
@@ -436,6 +438,7 @@ class MenuSidebar(Sidebar):
         self.bottom_buttons_layout.addWidget(self.capture_button)
         self.bottom_buttons_layout.addWidget(self.save_button)
         self.bottom_buttons_layout.addWidget(self.fps_button)
+        self.bottom_buttons_layout.addWidget(self.tracking_button)
         
         # Create a widget to hold the bottom layout
         self.bottom_buttons_widget = QWidget()
@@ -450,7 +453,7 @@ class MenuSidebar(Sidebar):
         # Store buttons for theme updates
         self.buttons = [
             self.theme_button, self.settings_button, self.exit_button,
-            self.capture_button, self.save_button, self.fps_button,
+            self.capture_button, self.save_button, self.fps_button, self.tracking_button,
             self.balloon_dl_button, self.balloon_classic_button,
             self.friend_foe_dl_button, self.friend_foe_classic_button,
             self.engagement_dl_button, self.engagement_hybrid_button
@@ -465,6 +468,7 @@ class MenuSidebar(Sidebar):
             self.capture_button: os.path.join(self.icon_base_dir, "camera.png"),
             self.save_button: os.path.join(self.icon_base_dir, "save.png"),
             self.fps_button: os.path.join(self.icon_base_dir, "speedometer.png"),
+            self.tracking_button: os.path.join(self.icon_base_dir, "target.png"),
             self.balloon_dl_button: balloon_icon,
             self.balloon_classic_button: balloon_icon,
             self.friend_foe_dl_button: friend_foe_icon,

@@ -20,6 +20,7 @@ from services.balloon_detector_service import BalloonDetectorService
 from services.friend_foe_service import FriendFoeService
 from services.engagement_mode_service import EngagementModeService
 from services.mock_service import MockService
+from services.pan_tilt_service import PanTiltService
 from ui.sidebar import LogSidebar, MenuSidebar, IconThemeManager
 from ui.camera_view import CameraView
 from ui.shape_dialog import ShapeDetectionDialog
@@ -48,6 +49,9 @@ class MainWindow(QMainWindow):
         
         # Initialize camera service
         self.init_camera()
+        
+        # Initialize pan-tilt service
+        self.init_pan_tilt_service()
         
         # Show the window in full screen mode instead of maximized
         self.showFullScreen()
@@ -103,6 +107,7 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.theme_button.clicked.connect(self.toggle_theme)
         self.menu_sidebar.exit_button.clicked.connect(self.on_exit_clicked)
         self.menu_sidebar.emergency_stop_button.clicked.connect(self.on_emergency_stop_clicked)
+        self.menu_sidebar.tracking_button.clicked.connect(self.on_tracking_clicked)
         
         # Base directory for icons - use absolute path
         icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
@@ -721,6 +726,10 @@ class MainWindow(QMainWindow):
             # Stop any active detector services
             self._stop_all_detection_services()
             
+            # Release pan-tilt service resources
+            if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service:
+                self.pan_tilt_service.release()
+            
             # Accept the close event
             event.accept()
             self.logger.info("Uygulama kapatıldı")
@@ -1154,3 +1163,50 @@ class MainWindow(QMainWindow):
         
         # Log Display Initialized
         self.logger.info("Log gösterimi başlatıldı")
+
+    def on_tracking_clicked(self):
+        """Handle tracking button click."""
+        is_active = self.menu_sidebar.tracking_button.isChecked()
+        
+        if is_active:
+            # Connect to Arduino
+            if not hasattr(self, 'pan_tilt_service') or not self.pan_tilt_service:
+                self.init_pan_tilt_service()
+                
+            # Connect to Arduino
+            success = self.pan_tilt_service.connect()
+            if not success:
+                # If connection failed, uncheck the button
+                self.menu_sidebar.tracking_button.setChecked(False)
+                QMessageBox.critical(self, "Bağlantı Hatası", 
+                                   "Pan-Tilt servoları ile bağlantı kurulamadı. COM7 bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
+                return
+                
+            # Connect the pan_tilt service to the balloon detector if available
+            if hasattr(self, 'balloon_detector') and self.balloon_detector:
+                self.pan_tilt_service.set_balloon_detector(self.balloon_detector)
+                
+                # Update frame dimensions
+                if hasattr(self, 'camera_service') and self.camera_service:
+                    width, height = self.camera_service.get_frame_dimensions()
+                    self.pan_tilt_service.set_frame_center(width, height)
+                
+                # Start tracking
+                self.pan_tilt_service.start_tracking()
+                self.logger.info("Balon takibi başlatıldı")
+                
+            else:
+                # No balloon detector available, show error
+                self.menu_sidebar.tracking_button.setChecked(False)
+                QMessageBox.warning(self, "Takip Hatası", 
+                                   "Takip için balon dedektörü aktif değil. Önce 'Hareketli Balon Modu (Derin Öğrenmeli)' modunu etkinleştirin.")
+        else:
+            # Stop tracking
+            if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service:
+                self.pan_tilt_service.stop_tracking()
+                self.logger.info("Balon takibi durduruldu")
+
+    def init_pan_tilt_service(self):
+        """Initialize the PanTiltService."""
+        self.pan_tilt_service = PanTiltService()
+        self.logger.info("PanTilt servisi başlatıldı")

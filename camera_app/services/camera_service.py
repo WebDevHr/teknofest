@@ -153,10 +153,23 @@ class CameraService(QObject):
             self.camera_error.emit("Kare yakalama hatası")
     
     def toggle_fps_display(self):
-        """Toggle the display of FPS counter."""
+        """Toggle FPS display."""
         self.show_fps = not self.show_fps
         self.logger.info(f"FPS gösterimi {('etkinleştirildi' if self.show_fps else 'devre dışı bırakıldı')}")
         return self.show_fps
+    
+    def get_frame_dimensions(self):
+        """Get the dimensions of the current frame.
+        
+        Returns:
+            tuple: (width, height) of the current frame, or default values if camera not available.
+        """
+        if not self.capture or not self.capture.isOpened():
+            return (640, 480)  # Return default values if camera not available
+            
+        width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        return (width, height)
     
     def capture_image(self):
         """Capture and save the current frame."""
