@@ -186,18 +186,6 @@ class CameraService(QObject):
             self.logger.error("Görüntü kaydedilemedi")
             return None
     
-    def set_yolo_service(self, yolo_service):
-        """Set the YOLO detection service."""
-        self.yolo_service = yolo_service
-        
-    def set_shape_detection_service(self, shape_detection_service):
-        """Set the shape detection service."""
-        self.shape_detection_service = shape_detection_service
-        
-    def set_roboflow_service(self, roboflow_service):
-        """Set the Roboflow detection service."""
-        self.roboflow_service = roboflow_service
-
     def set_detector_service(self, detector_service):
         """Set the current active detector service."""
         # Remove any previous detector service

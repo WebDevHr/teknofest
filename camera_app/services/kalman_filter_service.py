@@ -107,12 +107,6 @@ class KalmanFilterService(QObject):
                 # Update total delay
                 self.total_delay = self.avg_camera_delay + self.avg_processing_delay
                 
-                # Log delay info periodically
-                if len(self.processing_delays) % 10 == 0:
-                    self.logger.info(f"Average processing delay: {self.avg_processing_delay*1000:.1f}ms, "
-                                    f"Est. camera delay: {self.avg_camera_delay*1000:.1f}ms, "
-                                    f"Total delay: {self.total_delay*1000:.1f}ms")
-                
                 # Mark as calibrated after enough samples
                 if len(self.processing_delays) >= 10 and not self.is_calibrated:
                     self.is_calibrated = True
@@ -292,7 +286,6 @@ class KalmanFilterService(QObject):
         """
         if track_id in self.kalman_filters:
             del self.kalman_filters[track_id]
-            self.logger.info(f"Removed track ID: {track_id} from Kalman tracker")
     
     def draw_debug(self, frame, predictions=None, show_history=True):
         """
@@ -383,7 +376,4 @@ class KalmanFilterService(QObject):
         for track_id in tracks_to_remove:
             self.remove_track(track_id)
             
-        if tracks_to_remove:
-            self.logger.info(f"Cleaned up {len(tracks_to_remove)} stale Kalman tracks")
-        
         return len(tracks_to_remove) 

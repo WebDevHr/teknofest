@@ -676,341 +676,57 @@ class MainWindow(QMainWindow):
         capture_dialog.exec_()
     
     def on_save_clicked(self):
-        """Handle Save button click."""
-        # Varsayılan dosya adını oluştur
+        """Handle save button click."""
+        # Save the current frame
+        # Get the captures directory from config
+        directory = config.captures_dir
+            
+        # Create directory if it doesn't exist
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            
+        # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_filename = f"kamera_goruntu_{timestamp}.jpg"
+        filename = os.path.join(directory, f"capture_{timestamp}.png")
         
-        # Kaydedilecek dosya adı/konumu seçme iletişim kutusu
-        from PyQt5.QtWidgets import QFileDialog
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Mevcut Kareyi Kaydet",
-            default_filename,
-            "Görüntüler (*.png *.jpg *.jpeg)"
-        )
+        # Save the frame
+        success = self.camera_service.save_current_frame(filename)
         
-        # Kullanıcı dosya seçtiyse kaydet
-        if filename:
-            success = False
-            if hasattr(self, 'camera_service'):
-                success = self.camera_service.save_current_frame(filename)
+        if success:
+            self.logger.info(f"Görüntü {filename} olarak kaydedildi")
             
-            # Sonuç iletişim kutusunu göster
-            save_dialog = QMessageBox(self)
-            
-            if success:
-                # Başarılı
-                save_dialog.setWindowTitle("Kaydetme Başarılı")
-                save_dialog.setIcon(QMessageBox.Information)
-                save_dialog.setText("Mevcut kare başarıyla kaydedildi!")
-                save_dialog.setInformativeText(f"Şu isimle kaydedildi: {filename}")
-                
-                # Log
-                self.logger.info(f"Mevcut kare {filename} olarak kaydedildi")
-            else:
-                # Başarısız
-                save_dialog.setWindowTitle("Kaydetme Başarısız")
-                save_dialog.setIcon(QMessageBox.Warning)
-                save_dialog.setText("Mevcut kare kaydedilemedi.")
-                save_dialog.setInformativeText("Lütfen kameranın düzgün çalıştığını kontrol edin.")
-                
-                # Log
-                self.logger.warning(f"Mevcut kare {filename} olarak kaydedilemedi")
-            
-            # Butonlar
-            save_dialog.setStandardButtons(QMessageBox.Ok)
-            save_dialog.button(QMessageBox.Ok).setText("Tamam")
-            
-            # İletişim kutusunu göster
-            save_dialog.exec_()
+            # Show success message with the path
+            QMessageBox.information(
+                self,
+                "Görüntü Kaydedildi",
+                f"Görüntü başarıyla kaydedildi:\n{filename}"
+            )
         else:
-            # Kullanıcı iptal etti
-            self.logger.info("Kaydetme işlemi kullanıcı tarafından iptal edildi")
-    
-    def on_yolo_clicked(self):
-        """Handle YOLO button click."""
-        button = self.menu_sidebar.yolo_button
-        
-        if button.isChecked():
-            # İlk kez tıklandıysa YOLO servisini başlat
-            if not hasattr(self, 'balloon_detector'):
-                if not self.init_yolo():
-                    button.setChecked(False)
-                    return
+            self.logger.error("Görüntü kaydedilemedi")
             
-            # YOLO tespitini başlat
-            self.balloon_detector.start()
-            self.logger.info("YOLO tespiti başlatıldı")
-            button.setText("Tespiti Durdur")
-        else:
-            # YOLO tespitini durdur
-            if hasattr(self, 'balloon_detector'):
-                self.balloon_detector.stop()
-                self.logger.info("YOLO tespiti durduruldu")
-            button.setText("YOLO Tespiti")
-    
-    def init_yolo(self):
-        """Initialize the YOLO service for balloon tracking."""
-        if not hasattr(self, 'balloon_detector') or not self.balloon_detector:
-            # Create balloon detector service
-            self.balloon_detector = BalloonDetectorService()
-            
-            # Connect to camera service
-            if hasattr(self, 'camera_service') and self.camera_service:
-                self.camera_service.set_detector_service(self.balloon_detector)
-            
-            # Initialize service
-            if not self.balloon_detector.initialize():
-                self.logger.error("Failed to initialize Balloon detector service")
-                return
-            
-            # Configure Kalman filter settings
-            self.balloon_detector.use_kalman = True
-            self.balloon_detector.show_kalman_debug = True
-            
-            self.logger.info("Balon dedektör servisi ve Kalman filtresi başlatıldı")
-            
-        # Start service
-        self.balloon_detector.start()
-
-    def init_friend_foe_detector(self):
-        """Initialize the service for friend/foe detection using the friend_foe(v8n).pt model."""
-        if not hasattr(self, 'friend_foe_detector') or not self.friend_foe_detector:
-            # Create friend/foe detector service
-            self.friend_foe_detector = FriendFoeService()
-            
-            # Connect to camera service
-            if hasattr(self, 'camera_service') and self.camera_service:
-                self.camera_service.set_detector_service(self.friend_foe_detector)
-            
-            # Initialize service
-            if not self.friend_foe_detector.initialize():
-                self.logger.error("Failed to initialize Friend/Foe detector service")
-                return
-            
-            self.logger.info("Dost/Düşman dedektör servisi başlatıldı - 2 sınıf: dost, dusman")
-            
-        # Start service
-        self.friend_foe_detector.start()
-    
-    def init_engagement_detector(self):
-        """Initialize the service for engagement mode using the engagement-best.pt model."""
-        if not hasattr(self, 'engagement_detector') or not self.engagement_detector:
-            # Create engagement detector service
-            self.engagement_detector = EngagementModeService()
-            
-            # Connect to camera service
-            if hasattr(self, 'camera_service') and self.camera_service:
-                self.camera_service.set_detector_service(self.engagement_detector)
-            
-            # Initialize service
-            if not self.engagement_detector.initialize():
-                self.logger.error("Failed to initialize Engagement detector service")
-                return
-            
-            self.logger.info("Angajman dedektör servisi başlatıldı - 9 sınıf: red-circle, red-square, red-triangle, blue-circle, blue-square, blue-triangle, green-circle, green-square, green-triangle")
-            
-        # Start service
-        self.engagement_detector.start()
-
-    def init_mock_service(self, name):
-        """Initialize a mock service for non-implemented methods."""
-        mock_service = MockService(service_name=name)
-        
-        # Connect to camera service
-        if hasattr(self, 'camera_service') and self.camera_service:
-            self.camera_service.set_detector_service(mock_service)
-        
-        mock_service.initialize()
-        mock_service.start()
-        return mock_service
-
-    def on_engagement_dl_clicked(self):
-        """Handle engagement detection with deep learning button click."""
-        is_active = self.menu_sidebar.engagement_dl_button.isChecked()
-        
-        # Uncheck other buttons
-        if is_active:
-            self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_dl_button)
-            
-            # Stop other active services
-            self._stop_all_detection_services()
-        
-        # This uses the engagement detector service with engagement-best.pt model
-        if is_active:
-            self.logger.info("Angajman Modu (Derin Öğrenmeli) aktif edildi - engagement-best.pt modeli kullanılıyor")
-            self.init_engagement_detector()  # Initialize Engagement detector if needed
-            self.camera_view.set_detection_active(True)
-            self.camera_view.set_detection_mode("engagement")
-        else:
-            self.logger.info("Angajman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
-            self.camera_view.set_detection_active(False)
-            # Stop the service if it exists
-            if hasattr(self, 'engagement_detector') and self.engagement_detector:
-                self.engagement_detector.stop()
+            # Show error message
+            QMessageBox.critical(
+                self,
+                "Kayıt Hatası",
+                "Görüntü kaydedilemedi."
+            )
     
     def closeEvent(self, event):
         """Handle window close event."""
-        # Release camera resources
-        if hasattr(self, 'camera_service'):
-            self.camera_service.release()
+        try:
+            # Release camera resources
+            if hasattr(self, 'camera_service'):
+                self.camera_service.release()
             
-        self.logger.info("Uygulama kapatıldı")
-        event.accept()
-    
-    def init_shape_detection(self):
-        """Initialize the shape detection service."""
-        self.shape_detection_service = ShapeDetectionService()
-        
-        # Şekil tespiti servisini kamera servisine bağla
-        self.camera_service.set_shape_detection_service(self.shape_detection_service)
-        
-        return True
-    
-    def on_shape_clicked(self):
-        """Handle Shape Detection button click."""
-        button = self.menu_sidebar.shape_button
-        
-        if button.isChecked():
-            # İlk kez tıklandıysa şekil tespiti servisini başlat
-            if not hasattr(self, 'shape_detection_service'):
-                if not self.init_shape_detection():
-                    button.setChecked(False)
-                    return
+            # Stop any active detector services
+            self._stop_all_detection_services()
             
-            # Şekil tespitini başlat
-            self.shape_detection_service.start()
-            self.logger.info("Şekil tespiti başlatıldı")
-            button.setText("Tespiti Durdur")
-        else:
-            # Şekil tespitini durdur
-            if hasattr(self, 'shape_detection_service'):
-                self.shape_detection_service.stop()
-                self.logger.info("Şekil tespiti durduruldu")
-            button.setText("Şekil Tespiti")
-    
-    def init_roboflow(self):
-        """Initialize the Roboflow service."""
-        # config modülünden model yolunu al
-        model_path = config.get_engagement_model_path()
-        
-        # Dosyanın varlığını kontrol edelim
-        if not model_path:
-            self.logger.error("Roboflow modeli bulunamadı")
-            QMessageBox.warning(self, "Roboflow Hatası", "Roboflow model dosyası bulunamadı. .env dosyasındaki MODEL_DIR ve ENGAGEMENT_MODEL değişkenlerini kontrol edin.")
-            return False
-        
-        self.roboflow_service = RoboflowService(model_path)
-        
-        # Roboflow servisini kamera servisine bağla
-        self.camera_service.set_roboflow_service(self.roboflow_service)
-        
-        # Roboflow modelini başlat
-        if not self.roboflow_service.initialize():
-            self.logger.error("Roboflow modeli başlatılamadı")
-            QMessageBox.warning(self, "Roboflow Hatası", "Roboflow modeli başlatılamadı. Model dosyasının geçerli olduğunu kontrol edin.")
-            return False
-        
-        return True
-    
-    def on_roboflow_clicked(self):
-        """Handle Roboflow button click."""
-        button = self.menu_sidebar.roboflow_button
-        
-        if button.isChecked():
-            # İlk kez tıklandıysa Roboflow servisini başlat
-            if not hasattr(self, 'roboflow_service'):
-                if not self.init_roboflow():
-                    button.setChecked(False)
-                    return
-            
-            # Roboflow tespitini başlat
-            self.roboflow_service.start()
-            self.logger.info("Roboflow tespiti başlatıldı")
-            button.setText("Tespiti Durdur")
-        else:
-            # Roboflow tespitini durdur
-            if hasattr(self, 'roboflow_service'):
-                self.roboflow_service.stop()
-                self.logger.info("Roboflow tespiti durduruldu")
-            button.setText("Roboflow Tespiti")
-    
-    def on_fps_clicked(self):
-        """Handle FPS button click."""
-        if hasattr(self, 'camera_service'):
-            is_showing = self.camera_service.toggle_fps_display()
-            button_text = "FPS Gizle" if is_showing else "FPS Göster"
-            self.menu_sidebar.fps_button.setText(button_text)
-            
-            # Toggle visibility of our FPS label
-            self.fps_label.setVisible(is_showing)
-            
-            self.logger.info(f"FPS gösterimi {'etkinleştirildi' if is_showing else 'devre dışı bırakıldı'}")
-    
-    def load_existing_logs(self):
-        """Load existing logs from the logger service to the sidebar."""
-        # Clear previous logs first to avoid duplicates
-        self.log_sidebar.clear_logs()
-        
-        # Get all existing logs
-        existing_logs = self.logger.get_logs()
-        
-        # Add each log to the sidebar
-        for log in existing_logs:
-            self.log_sidebar.add_log(log)
-        
-        # Keep the log sidebar closed initially - don't force it open
-        # We'll make sure it's in closed state
-        self.log_sidebar.is_open = False
-        
-        # Set camera view to fill mode
-        self.camera_view.set_scale_mode("fill")
-        
-        # Log Display Initialized
-        self.logger.info("Log gösterimi başlatıldı")
-    
-    def toggle_fullscreen(self):
-        """Toggle between full screen and windowed mode."""
-        # Base directory for icons - use absolute path
-        icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
-        
-        if self.isFullScreen():
-            self.showNormal()
-            # Update tooltip
-            self.fullscreen_toggle_btn.setToolTip("Tam Ekrana Geç")
-            # Update icon to 'maximize' when in windowed mode
-            fullscreen_icon_path = os.path.join(icon_base_dir, "fullscreen.png")
-            if os.path.exists(fullscreen_icon_path):
-                themed_icon = IconThemeManager.get_themed_icon(fullscreen_icon_path, is_dark_theme=self.current_theme == "dark")
-                self.fullscreen_toggle_btn.setIcon(themed_icon)
-            self.logger.info("Tam ekran modundan çıkıldı")
-        else:
-            self.showFullScreen()
-            # Update tooltip
-            self.fullscreen_toggle_btn.setToolTip("Tam Ekrandan Çık")
-            # Update icon to 'minimize' when in fullscreen mode
-            minimize_icon_path = os.path.join(icon_base_dir, "minimize.png")
-            if os.path.exists(minimize_icon_path):
-                themed_icon = IconThemeManager.get_themed_icon(minimize_icon_path, is_dark_theme=self.current_theme == "dark")
-                self.fullscreen_toggle_btn.setIcon(themed_icon)
-            elif os.path.exists(os.path.join(icon_base_dir, "fullscreen.png")):  # Fallback
-                themed_icon = IconThemeManager.get_themed_icon(os.path.join(icon_base_dir, "fullscreen.png"), is_dark_theme=self.current_theme == "dark") 
-                self.fullscreen_toggle_btn.setIcon(themed_icon)
-            self.logger.info("Tam ekran moduna geçildi")
-    
-    def keyPressEvent(self, event):
-        """Handle key press events."""
-        # Exit full screen when Escape key is pressed
-        if event.key() == Qt.Key_Escape:
-            if self.isFullScreen():
-                self.toggle_fullscreen()
-            else:
-                # Let the parent handle the escape key if not in full screen
-                super().keyPressEvent(event)
-        else:
-            # Let the parent handle other keys
-            super().keyPressEvent(event)
+            # Accept the close event
+            event.accept()
+            self.logger.info("Uygulama kapatıldı")
+        except Exception as e:
+            self.logger.error(f"Uygulama kapatılırken hata oluştu: {str(e)}")
+            event.accept()  # Still close the application
     
     def init_fps_display(self):
         """Initialize the FPS display label."""
@@ -1261,4 +977,180 @@ class MainWindow(QMainWindow):
         
         for button in buttons:
             if button != current_button:
-                button.setChecked(False) 
+                button.setChecked(False)
+
+    def toggle_fullscreen(self):
+        """Toggle between full screen and windowed mode."""
+        # Base directory for icons - use absolute path
+        icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
+        
+        if self.isFullScreen():
+            self.showNormal()
+            # Update tooltip
+            self.fullscreen_toggle_btn.setToolTip("Tam Ekrana Geç")
+            # Update icon to 'maximize' when in windowed mode
+            fullscreen_icon_path = os.path.join(icon_base_dir, "fullscreen.png")
+            if os.path.exists(fullscreen_icon_path):
+                themed_icon = IconThemeManager.get_themed_icon(fullscreen_icon_path, is_dark_theme=self.current_theme == "dark")
+                self.fullscreen_toggle_btn.setIcon(themed_icon)
+            self.logger.info("Tam ekran modundan çıkıldı")
+        else:
+            self.showFullScreen()
+            # Update tooltip
+            self.fullscreen_toggle_btn.setToolTip("Tam Ekrandan Çık")
+            # Update icon to 'minimize' when in fullscreen mode
+            minimize_icon_path = os.path.join(icon_base_dir, "minimize.png")
+            if os.path.exists(minimize_icon_path):
+                themed_icon = IconThemeManager.get_themed_icon(minimize_icon_path, is_dark_theme=self.current_theme == "dark")
+                self.fullscreen_toggle_btn.setIcon(themed_icon)
+            elif os.path.exists(os.path.join(icon_base_dir, "fullscreen.png")):  # Fallback
+                themed_icon = IconThemeManager.get_themed_icon(os.path.join(icon_base_dir, "fullscreen.png"), is_dark_theme=self.current_theme == "dark") 
+                self.fullscreen_toggle_btn.setIcon(themed_icon)
+            self.logger.info("Tam ekran moduna geçildi")
+    
+    def keyPressEvent(self, event):
+        """Handle key press events."""
+        # Exit full screen when Escape key is pressed
+        if event.key() == Qt.Key_Escape:
+            if self.isFullScreen():
+                self.toggle_fullscreen()
+            else:
+                # Let the parent handle the escape key if not in full screen
+                super().keyPressEvent(event)
+        else:
+            # Let the parent handle other keys
+            super().keyPressEvent(event)
+    
+    def init_yolo(self):
+        """Initialize the YOLO service for balloon tracking."""
+        if not hasattr(self, 'balloon_detector') or not self.balloon_detector:
+            # Create balloon detector service
+            self.balloon_detector = BalloonDetectorService()
+            
+            # Connect to camera service
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.balloon_detector)
+            
+            # Initialize service
+            if not self.balloon_detector.initialize():
+                self.logger.error("Failed to initialize Balloon detector service")
+                return
+            
+            # Configure Kalman filter settings
+            self.balloon_detector.use_kalman = True
+            self.balloon_detector.show_kalman_debug = True
+            
+            self.logger.info("Balon dedektör servisi ve Kalman filtresi başlatıldı")
+            
+        # Start service
+        self.balloon_detector.start()
+
+    def init_friend_foe_detector(self):
+        """Initialize the service for friend/foe detection using the friend_foe(v8n).pt model."""
+        if not hasattr(self, 'friend_foe_detector') or not self.friend_foe_detector:
+            # Create friend/foe detector service
+            self.friend_foe_detector = FriendFoeService()
+            
+            # Connect to camera service
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.friend_foe_detector)
+            
+            # Initialize service
+            if not self.friend_foe_detector.initialize():
+                self.logger.error("Failed to initialize Friend/Foe detector service")
+                return
+            
+            self.logger.info("Dost/Düşman dedektör servisi başlatıldı - 2 sınıf: dost, dusman")
+            
+        # Start service
+        self.friend_foe_detector.start()
+    
+    def init_engagement_detector(self):
+        """Initialize the service for engagement mode using the engagement-best.pt model."""
+        if not hasattr(self, 'engagement_detector') or not self.engagement_detector:
+            # Create engagement detector service
+            self.engagement_detector = EngagementModeService()
+            
+            # Connect to camera service
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.engagement_detector)
+            
+            # Initialize service
+            if not self.engagement_detector.initialize():
+                self.logger.error("Failed to initialize Engagement detector service")
+                return
+            
+            self.logger.info("Angajman dedektör servisi başlatıldı - 9 sınıf: red-circle, red-square, red-triangle, blue-circle, blue-square, blue-triangle, green-circle, green-square, green-triangle")
+            
+        # Start service
+        self.engagement_detector.start()
+
+    def init_mock_service(self, name):
+        """Initialize a mock service for non-implemented methods."""
+        mock_service = MockService(service_name=name)
+        
+        # Connect to camera service
+        if hasattr(self, 'camera_service') and self.camera_service:
+            self.camera_service.set_detector_service(mock_service)
+        
+        mock_service.initialize()
+        mock_service.start()
+        return mock_service
+
+    def on_engagement_dl_clicked(self):
+        """Handle engagement detection with deep learning button click."""
+        is_active = self.menu_sidebar.engagement_dl_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_dl_button)
+            
+            # Stop other active services
+            self._stop_all_detection_services()
+        
+        # This uses the engagement detector service with engagement-best.pt model
+        if is_active:
+            self.logger.info("Angajman Modu (Derin Öğrenmeli) aktif edildi - engagement-best.pt modeli kullanılıyor")
+            self.init_engagement_detector()  # Initialize Engagement detector if needed
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("engagement")
+        else:
+            self.logger.info("Angajman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+            # Stop the service if it exists
+            if hasattr(self, 'engagement_detector') and self.engagement_detector:
+                self.engagement_detector.stop()
+    
+    def on_fps_clicked(self):
+        """Handle FPS button click."""
+        if hasattr(self, 'camera_service'):
+            is_showing = self.camera_service.toggle_fps_display()
+            button_text = "FPS Gizle" if is_showing else "FPS Göster"
+            self.menu_sidebar.fps_button.setText(button_text)
+            
+            # Toggle visibility of our FPS label
+            self.fps_label.setVisible(is_showing)
+            
+            self.logger.info(f"FPS gösterimi {'etkinleştirildi' if is_showing else 'devre dışı bırakıldı'}")
+
+    def load_existing_logs(self):
+        """Load existing logs from the logger service to the sidebar."""
+        # Clear previous logs first to avoid duplicates
+        self.log_sidebar.clear_logs()
+        
+        # Get all existing logs
+        existing_logs = self.logger.get_logs()
+        
+        # Add each log to the sidebar
+        for log in existing_logs:
+            self.log_sidebar.add_log(log)
+        
+        # Keep the log sidebar closed initially - don't force it open
+        # We'll make sure it's in closed state
+        self.log_sidebar.is_open = False
+        
+        # Set camera view to fill mode
+        self.camera_view.set_scale_mode("fill")
+        
+        # Log Display Initialized
+        self.logger.info("Log gösterimi başlatıldı")

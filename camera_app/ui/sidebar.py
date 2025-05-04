@@ -118,6 +118,9 @@ class LogSidebar(Sidebar):
         # Base directory for icons - use absolute path
         self.icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
         
+        # Track the number of displayed logs to avoid unnecessary refreshes
+        self.displayed_log_count = 0
+        
         # Add header label
         self.header_label = QLabel("Uygulama Logları")
         self.header_label.setStyleSheet("""
@@ -147,7 +150,7 @@ class LogSidebar(Sidebar):
         # Setup timer to ensure logs are updated regularly
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.refresh_logs)
-        self.refresh_timer.start(1000)  # Refresh every second
+        self.refresh_timer.start(500)  # Refresh every 500ms
     
     def update_text_area_style(self, is_dark=True):
         """Update the text area style based on theme."""
@@ -252,6 +255,9 @@ class LogSidebar(Sidebar):
         # Add the formatted message
         self.log_text.append(formatted_html)
         
+        # Increment the displayed log count
+        self.displayed_log_count += 1
+        
         # Auto-scroll to the bottom
         scrollbar = self.log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
@@ -284,9 +290,39 @@ class LogSidebar(Sidebar):
     def clear_logs(self):
         """Clear the log text area."""
         self.log_text.clear()
+        self.displayed_log_count = 0
     
     def refresh_logs(self):
-        """Ensure logs are displayed and updated."""
+        """Ensure logs are displayed and updated by fetching the latest logs from LoggerService."""
+        # Import here to avoid circular import
+        from services.logger_service import LoggerService
+        
+        # Get the logger service instance and fetch all logs
+        logger = LoggerService()
+        all_logs = logger.get_logs()
+        
+        # Check if there are new logs to display
+        if len(all_logs) > self.displayed_log_count:
+            # Save the current scroll position
+            scrollbar = self.log_text.verticalScrollBar()
+            was_at_bottom = scrollbar.value() >= scrollbar.maximum() - 10  # Consider "at bottom" if within 10 pixels
+            scroll_position = scrollbar.value()
+            
+            # Clear and refill the log view
+            self.log_text.clear()
+            for log in all_logs:
+                formatted_html = self.format_log_message(log)
+                self.log_text.append(formatted_html)
+            
+            # Update the displayed log count
+            self.displayed_log_count = len(all_logs)
+            
+            # Restore scroll position or keep at bottom if it was at bottom
+            if was_at_bottom:
+                scrollbar.setValue(scrollbar.maximum())
+            else:
+                scrollbar.setValue(scroll_position)
+        
         # Force update of the text edit
         self.log_text.update()
 

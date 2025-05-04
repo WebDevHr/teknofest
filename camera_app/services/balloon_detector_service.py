@@ -225,10 +225,6 @@ class BalloonDetectorService(QObject):
         if self.use_kalman:
             self.kalman_service.cleanup_old_tracks(max_age_seconds=self.track_timeout)
             
-        # Eğer track'ler temizlendiyse log mesajı yaz
-        if stale_track_ids:
-            self.logger.info(f"{len(stale_track_ids)} eski balon track'i temizlendi (görünmez oldukları için)")
-            
         return stale_track_ids
     
     def _process_results(self, results, frame_shape, frame_time=None):
