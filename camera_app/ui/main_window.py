@@ -750,7 +750,7 @@ class MainWindow(QMainWindow):
             button.setText("YOLO Tespiti")
     
     def init_yolo(self):
-        """Initialize the YOLO service."""
+        """Initialize the YOLO service with ByteTrack tracking."""
         model_path = config.get_balloon_model_path()
         if not model_path:
             self.logger.error("YOLO model dosyası bulunamadı")
@@ -767,6 +767,10 @@ class MainWindow(QMainWindow):
             self.logger.error("YOLO modeli başlatılamadı")
             QMessageBox.warning(self, "YOLO Hatası", "YOLO modeli başlatılamadı. Model dosyasının var olduğunu kontrol edin.")
             return False
+        
+        # YOLO servisini başlat
+        self.yolo_service.start()
+        self.logger.info(f"YOLO modeli başlatıldı ve ByteTrack tracking aktif: {model_path}")
         
         return True
     
@@ -1041,7 +1045,7 @@ class MainWindow(QMainWindow):
         
         # This uses the existing YOLO service
         if is_active:
-            self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli) aktif edildi")
+            self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli + ByteTrack) aktif edildi")
             self.init_yolo()  # Initialize YOLO if needed
             self.camera_view.set_detection_active(True)
             self.camera_view.set_detection_mode("yolo")

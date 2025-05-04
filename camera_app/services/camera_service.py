@@ -58,6 +58,10 @@ class CameraService(QObject):
             if not self.initialize():
                 return False
         
+        # Kamerayı daha düşük çözünürlüğe ayarla (performans için)
+        # self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        # self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
         # Create and start timer
         self.timer = QTimer()
         self.timer.timeout.connect(self._process_frame)
@@ -121,6 +125,9 @@ class CameraService(QObject):
             if not hasattr(self, 'frame_count'):
                 self.frame_count = 0
             self.frame_count += 1
+            
+            # Performans için resmi küçültebiliriz (isteğe bağlı)
+            # frame = cv2.resize(frame, (640, 480))
             
             # Şekil tespiti aktifse, tespit işlemini yap
             if hasattr(self, 'shape_detection_service') and self.shape_detection_service.is_running:

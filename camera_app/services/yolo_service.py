@@ -14,6 +14,7 @@ import torch
 from PyQt5.QtCore import QObject, pyqtSignal
 from services.logger_service import LoggerService
 from ultralytics import YOLO
+from collections import defaultdict
 
 class YoloService(QObject):
     """
@@ -30,8 +31,24 @@ class YoloService(QObject):
         self.is_initialized = False
         self.is_running = False
         
+        # GPU kontrolü
+        self.use_gpu = torch.cuda.is_available()
+        if self.use_gpu:
+            self.logger.info("GPU kullanılabilir - CUDA desteği aktif")
+        else:
+            self.logger.info("GPU kullanılamıyor - CPU kullanılacak")
+        
         # Daha geniş bir sınıf listesi oluşturalım veya modelden alalım
         self.class_names = ["balon"]  # Varsayılan
+
+        # Tracking related variables
+        self.track_history = defaultdict(lambda: [])
+        self.max_track_history = 30
+        
+        # Performans için ek ayarlar
+        self.last_frame_detections = []
+        self.skip_frames = 0
+        self.max_skip_frames = 1  # Her 2 karede bir tespit yap
         
     def initialize(self, model_path=None):
         """Initialize the YOLO model."""
@@ -43,14 +60,20 @@ class YoloService(QObject):
             return False
             
         try:
-            # YOLOv8 modelini yükle
+            # Cihaz seçimi - GPU varsa GPU, yoksa CPU kullan
+            device = 0 if self.use_gpu else 'cpu'  # 0 = ilk GPU
+            
+            # YOLOv8 modelini yükle - ByteTrack için adres belirt
             self.model = YOLO(self.model_path)
+            
+            # Model cihazını ayarla
+            self.model.to(device)
             
             # Modelin sınıf isimlerini al
             self.class_names = self.model.names
             
             # Log success
-            self.logger.info(f"YOLO modeli yüklendi: {self.model_path}")
+            self.logger.info(f"YOLO modeli yüklendi: {self.model_path}, Cihaz: {device}")
             self.is_initialized = True
             return True
         except Exception as e:
@@ -64,6 +87,7 @@ class YoloService(QObject):
             return False
             
         self.is_running = True
+        self.skip_frames = 0
         # Log
         self.logger.info("YOLO algılama servisi başlatıldı")
         return True
@@ -71,25 +95,53 @@ class YoloService(QObject):
     def stop(self):
         """Stop the detection service."""
         self.is_running = False
+        # Track geçmişini temizle
+        self.track_history.clear()
         # Log
         self.logger.info("YOLO algılama servisi durduruldu")
     
     def detect(self, frame):
         """
-        Detect objects in a frame.
+        Detect objects in a frame and track them.
         
         Args:
             frame: OpenCV image (BGR format)
             
         Returns:
-            List of detections, each containing [x, y, w, h, confidence, class_id]
+            List of detections, each containing [x, y, w, h, confidence, class_id, track_id]
         """
         if not self.is_initialized or not self.is_running:
             return []
+        
+        # Frame skip stratejisi - her max_skip_frames'de bir tespit yap
+        self.skip_frames += 1
+        if self.skip_frames <= self.max_skip_frames and len(self.last_frame_detections) > 0:
+            # Son tespit edilen nesneleri geri döndür
+            return self.last_frame_detections
+        
+        # Sıfırla
+        self.skip_frames = 0
             
         try:
-            # YOLOv8 ile tespit yap
-            results = self.model(frame, verbose=False)
+            # Performans için en iyi ayarlar
+            half = self.use_gpu  # GPU kullanıyorsa half precision kullan
+            
+            # Resmi daha küçük boyutlara getir (640x640 veya 320x320 gibi)
+            # Orijinal en-boy oranını koru ama tespit için daha küçük boyut kullan
+            img_size = 320 if self.use_gpu else 640  # GPU varsa daha düşük çözünürlük yeterli olabilir
+            
+            # YOLOv8 ile tespit yap, ByteTrack kullanarak
+            results = self.model.track(
+                frame, 
+                persist=True, 
+                tracker="bytetrack.yaml", 
+                verbose=False, 
+                conf=0.25,  # Güven eşiği - düşük değer daha fazla tespit (ama yanlış pozitif olabilir)
+                iou=0.45,   # IOU eşiği - kutuların çakışması için
+                half=half,  # Half precision için
+                imgsz=img_size,  # Resim boyutu
+                max_det=20,  # Maksimum tespit sayısı
+            )
             
             # Sonuçları işle
             detections = self._process_results(results, frame.shape)
@@ -97,21 +149,32 @@ class YoloService(QObject):
             # Sinyali gönder
             self.detection_ready.emit(frame, detections)
             
+            # Son tespitleri sakla
+            self.last_frame_detections = detections
+            
             return detections
             
         except Exception as e:
-            self.logger.error(f"Error during detection: {str(e)}")
+            self.logger.error(f"Error during detection and tracking: {str(e)}")
             return []
     
     def _process_results(self, results, frame_shape):
-        """Process YOLOv8 results to get detections."""
+        """Process YOLOv8 results to get detections and tracking info."""
         detections = []
         
         # Sonuçları işle
         for result in results:
+            if result.boxes is None or len(result.boxes) == 0:
+                continue
+                
             boxes = result.boxes
             
-            for box in boxes:
+            # Track IDs varsa al
+            track_ids = []
+            if hasattr(boxes, 'id') and boxes.id is not None:
+                track_ids = boxes.id.int().cpu().tolist()
+            
+            for i, box in enumerate(boxes):
                 # Kutu koordinatları
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 
@@ -125,13 +188,29 @@ class YoloService(QObject):
                 # Sınıf ID
                 class_id = int(box.cls[0].cpu().numpy())
                 
-                # Tespit listesine ekle [x, y, w, h, confidence, class_id]
-                detections.append([int(x1), int(y1), int(w), int(h), float(confidence), class_id])
+                # Track ID (varsa ekle)
+                track_id = -1
+                if i < len(track_ids):
+                    track_id = track_ids[i]
+                    
+                    # Track history'yi güncelle
+                    track = self.track_history[track_id]
+                    # Merkezi bul
+                    center_x = float(x1 + w / 2)
+                    center_y = float(y1 + h / 2)
+                    track.append((center_x, center_y))
+                    
+                    # Track history'yi sınırla
+                    if len(track) > self.max_track_history:
+                        track.pop(0)
+                
+                # Tespit listesine ekle [x, y, w, h, confidence, class_id, track_id]
+                detections.append([int(x1), int(y1), int(w), int(h), float(confidence), class_id, track_id])
         
         return detections
     
     def draw_detections(self, frame, detections):
-        """Draw detection boxes on the frame and apply opacity mask."""
+        """Draw detection boxes, tracking IDs, and confidence values on the frame."""
         # If no detections, return the original frame without any overlay
         if not detections:
             return frame
@@ -142,7 +221,7 @@ class YoloService(QObject):
         
         # Mark balloon regions in the mask
         for detection in detections:
-            x, y, w, h, confidence, class_id = detection
+            x, y, w, h, confidence, class_id, track_id = detection
             
             # Ensure coordinates are within frame boundaries
             x = max(0, x)
@@ -169,7 +248,7 @@ class YoloService(QObject):
         
         # Now draw boxes and labels on the frame
         for detection in detections:
-            x, y, w, h, confidence, class_id = detection
+            x, y, w, h, confidence, class_id, track_id = detection
             
             # Sınırları kontrol et
             x = max(0, x)
@@ -184,8 +263,10 @@ class YoloService(QObject):
             if class_id < len(self.class_names):
                 class_name = self.class_names[class_id]
             
-            # Etiket metni
+            # Etiket metni - şimdi ID de içeriyor
             label = f"{class_name}: {confidence:.2f}"
+            if track_id >= 0:
+                label = f"{class_name} ID:{track_id}: {confidence:.2f}"
             
             # Etiket arkaplanı
             text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
@@ -193,5 +274,13 @@ class YoloService(QObject):
             
             # Etiket metni
             cv2.putText(frame, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            
+            # Track çizgisini çiz (track_id varsa)
+            if track_id >= 0 and track_id in self.track_history and len(self.track_history[track_id]) > 1:
+                track = self.track_history[track_id]
+                # Track'in noktalarını numpy dizisine dönüştür
+                points = np.array(track, dtype=np.int32).reshape((-1, 1, 2))
+                # Tracking çizgisini çiz
+                cv2.polylines(frame, [points], isClosed=False, color=(230, 230, 230), thickness=2)
             
         return frame 
