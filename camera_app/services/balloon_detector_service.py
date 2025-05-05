@@ -73,6 +73,20 @@ class BalloonDetectorService(QObject):
         self.frame_count = 0
         self.current_frame_id = None
         
+        # FPS calculation
+        self.fps = 0  # Current FPS 
+        self.fps_update_interval = 1.0  # Update FPS every 1 second
+        self.last_fps_update_time = time.time()
+        self.frame_times = []  # Store frame timestamps for FPS calculation
+        self.processed_frames = 0  # Total processed frames (cumulative)
+        self.ibvs_processed_frames = 0  # Total frames sent to IBVS (cumulative)
+        
+        # FPS calculation for different stats
+        self.frame_times_total = []  # For total FPS calculation
+        self.frame_times_ibvs = []  # For IBVS FPS calculation  
+        self.total_fps = 0  # FPS for total frames
+        self.ibvs_fps = 0  # FPS for IBVS frames
+        
     def initialize(self, model_path=None):
         """Initialize the YOLO model."""
         if model_path:
@@ -137,10 +151,45 @@ class BalloonDetectorService(QObject):
         if not self.is_initialized or not self.is_running:
             return []
         
+        # Update processed frames count
+        self.processed_frames += 1
+        
         # Create a unique ID for this frame and mark it as received
         self.frame_count += 1
         self.current_frame_id = f"frame_{self.frame_count}_{time.time()}"
         frame_time = time.time()
+        
+        # Add frame time for FPS calculation
+        self.frame_times.append(frame_time)
+        
+        # Add frame time for Total FPS calculation
+        self.frame_times_total.append(frame_time)
+        
+        # Clean old frame times (older than 1 second)
+        current_time = time.time()
+        while self.frame_times and (current_time - self.frame_times[0] > 1.0):
+            self.frame_times.pop(0)
+        
+        # Clean old total frame times (older than 1 second)
+        while self.frame_times_total and (current_time - self.frame_times_total[0] > 1.0):
+            self.frame_times_total.pop(0)
+            
+        # Clean old IBVS frame times (older than 1 second)
+        while self.frame_times_ibvs and (current_time - self.frame_times_ibvs[0] > 1.0):
+            self.frame_times_ibvs.pop(0)
+        
+        # Update FPS every second
+        if current_time - self.last_fps_update_time >= self.fps_update_interval:
+            self.fps = len(self.frame_times)  # Frames in the last second
+            self.total_fps = len(self.frame_times_total)  # Total frames in the last second
+            self.ibvs_fps = len(self.frame_times_ibvs)  # IBVS frames in the last second
+            self.last_fps_update_time = current_time
+        
+        # Görüntülenen detections varsa IBVS'e gönderilmiş demektir
+        if len(self.last_frame_detections) > 0:
+            self.ibvs_processed_frames += 1
+            # Add current time to IBVS frame times for IBVS FPS
+            self.frame_times_ibvs.append(frame_time)
         
         if self.use_kalman:
             self.kalman_service.mark_frame_received(self.current_frame_id)
@@ -232,6 +281,10 @@ class BalloonDetectorService(QObject):
         detections = []
         current_time = time.time()
         
+        # Calculate frame center
+        height, width = frame_shape[:2]
+        frame_center = (width // 2, height // 2)
+        
         # Mevcut karede görülen track ID'leri kaydet
         current_track_ids = set()
         
@@ -284,33 +337,14 @@ class BalloonDetectorService(QObject):
                     if len(track) > self.max_track_history:
                         track.pop(0)
                     
-                    # Kalman filtresi güncelle
+                    # Kalman filtresi güncelle (bounding box konumlarını değiştirmeden)
                     if self.use_kalman and track_id != -1:
-                        # Update Kalman filter with the current position
-                        self.kalman_service.update(track_id, (center_x, center_y), frame_time)
+                        # Update Kalman filter with the current position and frame center for initialization
+                        self.kalman_service.update(track_id, (center_x, center_y), frame_time, frame_center)
                         
-                        # Get prediction for the position after system delay
-                        predicted_pos = self.kalman_service.predict(track_id)
-                        
-                        if predicted_pos:
-                            # Adjust detection with predicted position
-                            pred_x, pred_y = predicted_pos
-                            
-                            # Calculate offset from current center to predicted center
-                            offset_x = pred_x - center_x
-                            offset_y = pred_y - center_y
-                            
-                            # Apply offset to the bounding box
-                            x1 += offset_x
-                            y1 += offset_y
-                            x2 += offset_x
-                            y2 += offset_y
-                            
-                            # Recalculate width, height, and center
-                            w = x2 - x1
-                            h = y2 - y1
-                            center_x = pred_x
-                            center_y = pred_y
+                        # Kalman tahmini al - ama bounding box'ları değiştirmek için kullanma
+                        # Sadece görselleştirme için kullanılacak
+                        self.kalman_service.predict(track_id, None, frame_center)
                 
                 # Tespit listesine ekle [x, y, w, h, confidence, class_id, track_id]
                 detections.append([int(x1), int(y1), int(w), int(h), float(confidence), class_id, track_id])
@@ -392,6 +426,15 @@ class BalloonDetectorService(QObject):
         
         # Add Kalman filter debug visualization if enabled
         if self.use_kalman and self.show_kalman_debug:
+            # Nesne yoksa bile merkez noktasında başlayan bir tahmin çizimi için
+            if len(detections) == 0:
+                # "default_track" adında bir sahte track ID oluşturuyoruz
+                dummy_track_id = "default_track"
+                if dummy_track_id not in self.kalman_service.kalman_filters:
+                    # Merkez noktasından başlayan bir kalman filter başlat
+                    self.kalman_service.initialize_kalman(dummy_track_id, (center_x, center_y))
+            
+            # Standart debug görselleştirmesi
             output = self.kalman_service.draw_debug(output)
         
         # Draw crosshair at the center of the frame
@@ -423,5 +466,32 @@ class BalloonDetectorService(QObject):
                  2, 
                  crosshair_color, 
                  -1)  # -1 thickness means filled circle
+        
+        # Draw performance stats - mor renkte gösterelim
+        stats_color = (255, 0, 255)  # Mor renk (magenta)
+        
+        cv2.putText(output, f"FPS: {self.fps}", 
+                (width - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        cv2.putText(output, f"Total FPS: {self.total_fps}", 
+                (width - 200, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        cv2.putText(output, f"IBVS FPS: {self.ibvs_fps}", 
+                (width - 200, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        # Tespit sayısını da göster
+        cv2.putText(output, f"Detections: {len(detections)}", 
+                (width - 200, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        # Skip frame bilgisini göster
+        cv2.putText(output, f"Skip Frame: {self.skip_frames}/{self.max_skip_frames+1}", 
+                (width - 200, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        # Toplam frame sayılarını göster (birikimli)
+        cv2.putText(output, f"Total Frames: {self.processed_frames}", 
+                (10, height - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, stats_color, 1)
+        
+        cv2.putText(output, f"IBVS Frames: {self.ibvs_processed_frames}", 
+                (10, height - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, stats_color, 1)
         
         return output 

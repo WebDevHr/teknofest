@@ -16,6 +16,7 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from services.logger_service import LoggerService
 from ultralytics import YOLO
 from collections import defaultdict
+import time
 
 class FriendFoeService(QObject):
     """
@@ -57,6 +58,20 @@ class FriendFoeService(QObject):
         # Tracking related variables
         self.track_history = defaultdict(lambda: [])
         self.max_track_history = 30
+        
+        # FPS calculation
+        self.fps = 0  # Current FPS
+        self.fps_update_interval = 1.0  # Update FPS every 1 second
+        self.last_fps_update_time = time.time()
+        self.frame_times = []  # Store frame timestamps for FPS calculation
+        self.processed_frames = 0  # Total processed frames (cumulative)
+        self.ibvs_processed_frames = 0  # Total frames sent to IBVS (cumulative)
+        
+        # FPS calculation for different stats
+        self.frame_times_total = []  # For total FPS calculation
+        self.frame_times_ibvs = []  # For IBVS FPS calculation  
+        self.total_fps = 0  # FPS for total frames
+        self.ibvs_fps = 0  # FPS for IBVS frames
         
     def initialize(self, model_path=None):
         """Initialize the YOLO model."""
@@ -118,6 +133,44 @@ class FriendFoeService(QObject):
         """
         if not self.is_initialized or not self.is_running:
             return []
+        
+        # Update processed frames count
+        self.processed_frames += 1
+        
+        # FPS ve frame zamanlarını güncelle
+        frame_time = time.time()
+        
+        # Add frame time for FPS calculation
+        self.frame_times.append(frame_time)
+        
+        # Add frame time for Total FPS calculation
+        self.frame_times_total.append(frame_time)
+        
+        # Clean old frame times (older than 1 second)
+        current_time = time.time()
+        while self.frame_times and (current_time - self.frame_times[0] > 1.0):
+            self.frame_times.pop(0)
+        
+        # Clean old total frame times (older than 1 second)
+        while self.frame_times_total and (current_time - self.frame_times_total[0] > 1.0):
+            self.frame_times_total.pop(0)
+            
+        # Clean old IBVS frame times (older than 1 second)
+        while self.frame_times_ibvs and (current_time - self.frame_times_ibvs[0] > 1.0):
+            self.frame_times_ibvs.pop(0)
+        
+        # Update FPS every second
+        if current_time - self.last_fps_update_time >= self.fps_update_interval:
+            self.fps = len(self.frame_times)  # Frames in the last second
+            self.total_fps = len(self.frame_times_total)  # Total frames in the last second
+            self.ibvs_fps = len(self.frame_times_ibvs)  # IBVS frames in the last second
+            self.last_fps_update_time = current_time
+        
+        # Görüntülenen detections varsa IBVS'e gönderilmiş demektir
+        if len(self.last_frame_detections) > 0:
+            self.ibvs_processed_frames += 1
+            # Add current time to IBVS frame times for IBVS FPS
+            self.frame_times_ibvs.append(frame_time)
         
         # Frame skip stratejisi - her max_skip_frames'de bir tespit yap
         self.skip_frames += 1
@@ -331,5 +384,62 @@ class FriendFoeService(QObject):
                     # Draw lines connecting previous positions
                     points = np.array(track, dtype=np.int32).reshape((-1, 1, 2))
                     cv2.polylines(output, [points], False, color, 2)
+        
+        # Draw crosshair at the center of the frame
+        center_x = width // 2
+        center_y = height // 2
+        
+        # Set crosshair properties
+        crosshair_color = (0, 0, 255)  # Kırmızı (BGR formatında)
+        crosshair_size = 20
+        crosshair_thickness = 2
+        
+        # Draw horizontal line of the crosshair
+        cv2.line(output, 
+                (center_x - crosshair_size, center_y), 
+                (center_x + crosshair_size, center_y), 
+                crosshair_color, 
+                crosshair_thickness)
+        
+        # Draw vertical line of the crosshair
+        cv2.line(output, 
+                (center_x, center_y - crosshair_size), 
+                (center_x, center_y + crosshair_size), 
+                crosshair_color, 
+                crosshair_thickness)
+        
+        # Draw a small circle at the center for better visibility
+        cv2.circle(output, 
+                 (center_x, center_y), 
+                 2, 
+                 crosshair_color, 
+                 -1)  # -1 thickness means filled circle
+        
+        # Draw performance stats - mor renkte gösterelim
+        stats_color = (255, 0, 255)  # Mor renk (magenta)
+        
+        cv2.putText(output, f"FPS: {self.fps}", 
+                (width - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        cv2.putText(output, f"Total FPS: {self.total_fps}", 
+                (width - 200, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        cv2.putText(output, f"IBVS FPS: {self.ibvs_fps}", 
+                (width - 200, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        # Tespit sayısını da göster
+        cv2.putText(output, f"Detections: {len(detections)}", 
+                (width - 200, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        # Skip frame bilgisini göster
+        cv2.putText(output, f"Skip Frame: {self.skip_frames}/{self.max_skip_frames+1}", 
+                (width - 200, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
+        
+        # Toplam frame sayılarını göster (birikimli)
+        cv2.putText(output, f"Total Frames: {self.processed_frames}", 
+                (10, height - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, stats_color, 1)
+        
+        cv2.putText(output, f"IBVS Frames: {self.ibvs_processed_frames}", 
+                (10, height - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, stats_color, 1)
         
         return output 

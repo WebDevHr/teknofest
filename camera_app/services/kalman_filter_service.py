@@ -114,7 +114,7 @@ class KalmanFilterService(QObject):
         else:
             self.logger.warning(f"Unknown frame_id in mark_processing_end: {frame_id}")
     
-    def initialize_kalman(self, track_id):
+    def initialize_kalman(self, track_id, frame_center=None):
         """Initialize a Kalman filter for a new track."""
         # Create Kalman filter
         kalman = cv2.KalmanFilter(4, 2)  # 4 state variables (x,y,dx,dy), 2 measurements (x,y)
@@ -133,37 +133,88 @@ class KalmanFilterService(QObject):
             [0, 1, 0, 0]
         ], np.float32)
         
-        # Process noise covariance matrix
+        # Process noise covariance matrix - daha düşük değerler ilk tahminin daha stabil olmasını sağlar
+        # İlk tahminlerde hareketin az olması için düşük process noise kullanıyoruz
         kalman.processNoiseCov = np.array([
-            [0.01, 0, 0, 0],
-            [0, 0.01, 0, 0],
-            [0, 0, 0.1, 0],
-            [0, 0, 0, 0.1]
+            [0.001, 0, 0, 0],     # x pozisyon process noise (düşürüldü)
+            [0, 0.001, 0, 0],     # y pozisyon process noise (düşürüldü)
+            [0, 0, 0.01, 0],      # dx hız process noise (düşürüldü)
+            [0, 0, 0, 0.01]       # dy hız process noise (düşürüldü)
         ], np.float32)
         
-        # Measurement noise covariance matrix
+        # Measurement noise covariance matrix - düşük değerler ölçümlere daha çok güvenileceğini gösterir
         kalman.measurementNoiseCov = np.array([
             [0.1, 0],
             [0, 0.1]
         ], np.float32)
         
-        # Error covariance matrix
+        # Error covariance matrix - düşük değerler başlangıçtaki belirsizliğin az olduğunu gösterir
         kalman.errorCovPost = np.array([
-            [0.1, 0, 0, 0],
-            [0, 0.1, 0, 0],
-            [0, 0, 0.1, 0],
-            [0, 0, 0, 0.1]
+            [0.01, 0, 0, 0],     # x pozisyon hatası (düşürüldü)
+            [0, 0.01, 0, 0],     # y pozisyon hatası (düşürüldü)
+            [0, 0, 0.01, 0],     # dx hız hatası (düşürüldü)
+            [0, 0, 0, 0.01]      # dy hız hatası (düşürüldü)
         ], np.float32)
+        
+        # Initialize position for track
+        center_pos = None
+        
+        # Initialize state from frame center instead of default (0,0)
+        if frame_center is not None:
+            # Initialize state with position at frame center and zero velocity
+            kalman.statePost = np.array([
+                [frame_center[0]],  # x position (frame center x)
+                [frame_center[1]],  # y position (frame center y)
+                [0],                # dx (zero initial velocity)
+                [0]                 # dy (zero initial velocity)
+            ], np.float32)
+            
+            # statePredict'i de merkez olarak ayarlayarak ilk tahminin kaymasını önle
+            kalman.statePre = np.array([
+                [frame_center[0]],  # x position (frame center x)
+                [frame_center[1]],  # y position (frame center y)
+                [0],                # dx (zero initial velocity)
+                [0]                 # dy (zero initial velocity)
+            ], np.float32)
+            
+            center_pos = frame_center
+        else:
+            # Use default initial state with centered position
+            # Try to estimate a default center (HD resolution)
+            default_center_x = 640  # Half of 1280 (typical HD width)
+            default_center_y = 360  # Half of 720 (typical HD height)
+            
+            kalman.statePost = np.array([
+                [default_center_x],  # x position at estimated center
+                [default_center_y],  # y position at estimated center
+                [0],                # dx (zero initial velocity)
+                [0]                 # dy (zero initial velocity)
+            ], np.float32)
+            
+            # statePredict'i de merkez olarak ayarla
+            kalman.statePre = np.array([
+                [default_center_x],  # x position at estimated center
+                [default_center_y],  # y position at estimated center
+                [0],                # dx (zero initial velocity)
+                [0]                 # dy (zero initial velocity)
+            ], np.float32)
+            
+            center_pos = (default_center_x, default_center_y)
+        
+        # Pre-fill history and prediction history with center position
+        # so the visualization starts from the center instead of empty
+        initial_history = [(center_pos[0], center_pos[1]) for _ in range(3)]
         
         # Save to dictionary
         self.kalman_filters[track_id] = {
             'filter': kalman,
             'last_update': time.time(),
-            'history': [],
-            'prediction_history': []
+            'history': initial_history.copy(),  # Initialize history with center position
+            'prediction_history': initial_history.copy(),  # Initialize prediction history with center position
+            'stable_count': 0  # İlk birkaç tahminin daha stabil olması için sayaç
         }
     
-    def update(self, track_id, measurement, frame_time=None):
+    def update(self, track_id, measurement, frame_time=None, frame_center=None):
         """
         Update the Kalman filter with a new measurement.
         
@@ -171,13 +222,14 @@ class KalmanFilterService(QObject):
             track_id: ID of the track to update
             measurement: (x, y) position of the detection
             frame_time: Optional timestamp of the frame
+            frame_center: Optional (x, y) center of the frame for new track initialization
             
         Returns:
             Corrected position (x, y) after Kalman update
         """
         # Initialize if this is a new track
         if track_id not in self.kalman_filters:
-            self.initialize_kalman(track_id)
+            self.initialize_kalman(track_id, frame_center)
         
         current_time = time.time()
         
@@ -217,18 +269,22 @@ class KalmanFilterService(QObject):
         corrected = kalman.statePost
         return (corrected[0][0], corrected[1][0])
     
-    def predict(self, track_id, time_offset=None):
+    def predict(self, track_id, time_offset=None, frame_center=None):
         """
         Predict position at a future time offset.
         
         Args:
             track_id: ID of the track to predict
             time_offset: Time in future to predict for (if None, uses total system delay)
+            frame_center: Optional center of frame to return for first prediction
             
         Returns:
             Predicted position (x, y)
         """
         if track_id not in self.kalman_filters:
+            # If frame center is provided, return that for missing tracks
+            if frame_center is not None:
+                return frame_center
             return None
         
         # Use total delay if time_offset not specified
@@ -237,31 +293,90 @@ class KalmanFilterService(QObject):
         
         # Get Kalman filter for this track
         kalman = self.kalman_filters[track_id]['filter']
+        track_data = self.kalman_filters[track_id]
         
-        # Store current state to restore later
-        current_state = kalman.statePost.copy()
-        current_transition = kalman.transitionMatrix.copy()
-        
-        # Set transition matrix for prediction with time_offset
-        predict_transition = kalman.transitionMatrix.copy()
-        predict_transition[0, 2] = time_offset
-        predict_transition[1, 3] = time_offset
-        kalman.transitionMatrix = predict_transition
-        
-        # Predict
-        prediction = kalman.predict()
-        
-        # Restore original state
-        kalman.statePost = current_state
-        kalman.transitionMatrix = current_transition
-        
-        # Convert prediction to (x, y) coordinates
-        predicted_pos = (prediction[0][0], prediction[1][0])
+        # İlk 5 tahmin için stabiliteyi arttır
+        stable_threshold = 5
+        if track_data['stable_count'] < stable_threshold and frame_center is not None:
+            track_data['stable_count'] += 1
+            
+            # İlk birkaç tahminde, merkeze doğru çeken bir etki uygulayalım
+            # Stabilite sayacı arttıkça merkezin etkisi azalır
+            stabilization_factor = 1.0 - (track_data['stable_count'] / stable_threshold)
+            
+            # Geçişi yumuşatmak için doğrusal interpolasyon kullanıyoruz
+            center_weight = 0.8 * stabilization_factor  # Başta %80 merkez etkisi, giderek azalır
+            
+            # Check if this is the first prediction (no history yet)
+            prediction_history = track_data['prediction_history']
+            if len(prediction_history) == 0:
+                # For first prediction, just return the frame center as prediction
+                predicted_pos = frame_center
+                # Store prediction in history
+                prediction_history.append(predicted_pos)
+                return predicted_pos
+                
+            # Kalman tahminini al
+            # Store current state to restore later
+            current_state = kalman.statePost.copy()
+            current_transition = kalman.transitionMatrix.copy()
+            
+            # Set transition matrix for prediction with time_offset
+            predict_transition = kalman.transitionMatrix.copy()
+            predict_transition[0, 2] = time_offset
+            predict_transition[1, 3] = time_offset
+            kalman.transitionMatrix = predict_transition
+            
+            # Predict
+            prediction = kalman.predict()
+            
+            # Restore original state
+            kalman.statePost = current_state
+            kalman.transitionMatrix = current_transition
+            
+            # Convert prediction to (x, y) coordinates
+            kalman_pos = (prediction[0][0], prediction[1][0])
+            
+            # İlk birkaç tahminde merkez ile kalman tahmini arasında interpolasyon yap
+            predicted_pos = (
+                kalman_pos[0] * (1 - center_weight) + frame_center[0] * center_weight,
+                kalman_pos[1] * (1 - center_weight) + frame_center[1] * center_weight
+            )
+        else:
+            # Normal prediction for stable tracks
+            # Check if this is the first prediction (no history yet)
+            prediction_history = track_data['prediction_history']
+            if len(prediction_history) == 0 and frame_center is not None:
+                # For first prediction, just return the frame center as prediction
+                predicted_pos = frame_center
+                # Store prediction in history
+                prediction_history.append(predicted_pos)
+                return predicted_pos
+            
+            # Store current state to restore later
+            current_state = kalman.statePost.copy()
+            current_transition = kalman.transitionMatrix.copy()
+            
+            # Set transition matrix for prediction with time_offset
+            predict_transition = kalman.transitionMatrix.copy()
+            predict_transition[0, 2] = time_offset
+            predict_transition[1, 3] = time_offset
+            kalman.transitionMatrix = predict_transition
+            
+            # Predict
+            prediction = kalman.predict()
+            
+            # Restore original state
+            kalman.statePost = current_state
+            kalman.transitionMatrix = current_transition
+            
+            # Convert prediction to (x, y) coordinates
+            predicted_pos = (prediction[0][0], prediction[1][0])
         
         # Store prediction in history
-        self.kalman_filters[track_id]['prediction_history'].append(predicted_pos)
-        if len(self.kalman_filters[track_id]['prediction_history']) > 30:
-            self.kalman_filters[track_id]['prediction_history'].pop(0)
+        prediction_history.append(predicted_pos)
+        if len(prediction_history) > 30:
+            prediction_history.pop(0)
         
         return predicted_pos
     
@@ -299,11 +414,28 @@ class KalmanFilterService(QObject):
         Returns:
             Frame with debug visualization
         """
+        # Calculate frame center
+        height, width = frame.shape[:2]
+        frame_center = (width // 2, height // 2)
+        
         if predictions is None:
-            predictions = self.get_all_predictions()
+            predictions = {}
+            for track_id in self.kalman_filters:
+                predictions[track_id] = self.predict(track_id, None, frame_center)
         
         # Create a copy to draw on
         vis_frame = frame.copy()
+        
+        # Önce kılavuz çizgi çiz - ekranın merkezi ile tahminler arasında
+        for track_id, predicted_pos in predictions.items():
+            if predicted_pos is None:
+                continue
+                
+            # Çizgiyi merkezden tahmine doğru çiz (hedef gösterici gibi)
+            cv2.line(vis_frame, 
+                    (int(frame_center[0]), int(frame_center[1])),
+                    (int(predicted_pos[0]), int(predicted_pos[1])),
+                    (0, 255, 255), 1, cv2.LINE_AA)  # Sarı çizgi, anti-aliased
         
         # Draw for each track
         for track_id, predicted_pos in predictions.items():
@@ -340,12 +472,10 @@ class KalmanFilterService(QObject):
                         pt2 = (int(history[i][0]), int(history[i][1]))
                         cv2.line(vis_frame, pt1, pt2, (0, 255, 0), 1)  # Green line for actual path
                 
-                # Draw predicted path
+                # Draw predicted path - daha ince ve daha düzgün
                 if len(pred_history) > 1:
-                    for i in range(1, len(pred_history)):
-                        pt1 = (int(pred_history[i-1][0]), int(pred_history[i-1][1]))
-                        pt2 = (int(pred_history[i][0]), int(pred_history[i][1]))
-                        cv2.line(vis_frame, pt1, pt2, (255, 0, 0), 1)  # Blue line for predicted path
+                    points = np.array(pred_history, dtype=np.int32).reshape((-1, 1, 2))
+                    cv2.polylines(vis_frame, [points], False, (255, 0, 0), 1, cv2.LINE_AA)  # Anti-aliased blue line
         
         # Add delay information text - sarı renkte gösterelim (daha görünür olması için)
         cv2.putText(vis_frame, f"Processing: {self.avg_processing_delay*1000:.1f}ms", 

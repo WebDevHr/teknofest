@@ -45,7 +45,7 @@ class PanTiltService(QObject):
         self.is_connected = False
         
         # Current servo positions (degrees)
-        self.pan_angle = 90  # 0-180, default is center
+        self.pan_angle = 120  # 0-180, default is center
         self.tilt_angle = 90  # 0-180, default is center
         
         # Servo limits
