@@ -53,7 +53,7 @@ class BalloonDetectorService(QObject):
 
         # Tracking related variables
         self.track_history = defaultdict(lambda: [])
-        self.max_track_history = 30
+        self.max_track_history = 10
         
         # Track'lerin son görülme zamanını tutacak dictionary
         self.last_seen_time = {}
@@ -131,6 +131,7 @@ class BalloonDetectorService(QObject):
     
     def stop(self):
         """Stop the detection service."""
+        self.is_initialized = False
         self.is_running = False
         # Track geçmişini temizle
         self.track_history.clear()

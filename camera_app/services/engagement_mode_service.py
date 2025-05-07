@@ -57,6 +57,9 @@ class EngagementModeService(QObject):
         self.skip_frames = 0
         self.max_skip_frames = 1  # Her 2 karede bir tespit yap
         
+        # Sadece belirli bir sınıfı tespit etme ayarı
+        self.target_class = None  # Varsayılan olarak tüm sınıfları tespit et
+        
     def initialize(self, model_path=None):
         """Initialize the YOLO model."""
         if model_path:
@@ -78,6 +81,10 @@ class EngagementModeService(QObject):
             
             # Modelin sınıf isimlerini al
             self.class_names = self.model.names
+            
+            # Mevcut sınıf isimlerini logla
+            class_names_str = ', '.join([f"{i}:{name}" for i, name in self.class_names.items()])
+            self.logger.info(f"Algılanabilen sınıflar: {class_names_str}")
             
             # Log success
             self.logger.info(f"Angajman dedektör modeli yüklendi: {self.model_path}, Cihaz: {device}")
@@ -161,6 +168,50 @@ class EngagementModeService(QObject):
             self.logger.error(f"Angajman tespiti sırasında hata: {str(e)}")
             return []
     
+    def set_target_class(self, class_name):
+        """Sadece belirtilen sınıfı tespit etmek için ayarla."""
+        # Mevcut sınıf isimlerini kontrol et
+        self.logger.info(f"Mevcut sınıflar: {list(self.class_names.values())}")
+        
+        # class_names değerleri içinde kontrol et
+        class_exists = class_name in self.class_names.values()
+        
+        if class_exists:
+            self.target_class = class_name
+            self.logger.info(f"Hedef sınıf '{class_name}' olarak ayarlandı")
+            return True
+        else:
+            # YOLO modelinin kullandığı sınıf isimlerine uyum sağlamak için alternatif isimler kontrolü
+            # Örneğin "red-square" yerine modelde "kırmızı kare" geçiyorsa
+            alternative_names = {
+                "red-square": ["kirmizi-kare", "kirmizi_kare", "red_square", "red square"],
+                "red-circle": ["kirmizi-daire", "kirmizi_daire", "red_circle", "red circle"],
+                "red-triangle": ["kirmizi-ucgen", "kirmizi_ucgen", "red_triangle", "red triangle"],
+                "blue-square": ["mavi-kare", "mavi_kare", "blue_square", "blue square"],
+                "blue-circle": ["mavi-daire", "mavi_daire", "blue_circle", "blue circle"],
+                "blue-triangle": ["mavi-ucgen", "mavi_ucgen", "blue_triangle", "blue triangle"],
+                "green-square": ["yesil-kare", "yesil_kare", "green_square", "green square"],
+                "green-circle": ["yesil-daire", "yesil_daire", "green_circle", "green circle"],
+                "green-triangle": ["yesil-ucgen", "yesil_ucgen", "green_triangle", "green triangle"]
+            }
+            
+            # Alternatif isimlerle eşleşme kontrol et
+            for target_class, alternatives in alternative_names.items():
+                if class_name == target_class:
+                    # Orijinal ad doğru ama model içinde farklı bir formatta olabilir
+                    for i, name in self.class_names.items():
+                        if name in alternatives or any(alt in name.lower() for alt in alternatives):
+                            self.target_class = name
+                            self.logger.info(f"Hedef sınıf '{class_name}' yerine model içindeki '{name}' olarak ayarlandı")
+                            return True
+            
+            # Eğer buraya kadar geldiyse, sınıf bulunamadı
+            self.logger.warning(f"Geçersiz sınıf adı: {class_name}. Sınıf modelde bulunamadı.")
+            # Varsayılan olarak ilk sınıfı kullan (hata durumunda)
+            self.target_class = list(self.class_names.values())[0] if self.class_names else None
+            self.logger.info(f"Varsayılan hedef sınıf '{self.target_class}' olarak ayarlandı")
+            return False
+    
     def _process_results(self, results, frame_shape):
         """Process YOLOv8 results to get detections."""
         detections = []
@@ -186,8 +237,19 @@ class EngagementModeService(QObject):
                 # Sınıf ID
                 class_id = int(box.cls[0].cpu().numpy())
                 
-                # Tespit listesine ekle [x, y, w, h, confidence, class_id]
-                detections.append([int(x1), int(y1), int(w), int(h), float(confidence), class_id])
+                # Sınıf adını al
+                class_name = "unknown"
+                if class_id in self.class_names:
+                    class_name = self.class_names[class_id]
+                
+                # Tüm sınıfları tespit et, ancak hedef sınıf olup olmadığını detections içinde belirt
+                is_target = False
+                if self.target_class is not None:
+                    if class_name == self.target_class:
+                        is_target = True
+                
+                # Tespit listesine ekle [x, y, w, h, confidence, class_id, is_target]
+                detections.append([int(x1), int(y1), int(w), int(h), float(confidence), class_id, is_target])
         
         return detections
     
@@ -199,27 +261,29 @@ class EngagementModeService(QObject):
         # Work on a copy of the frame
         output = frame.copy()
         
-        # Create a mask for all shape detections
+        # Create a mask for target shape detections
         height, width = frame.shape[:2]
-        mask = np.zeros((height, width), dtype=np.uint8)
+        target_mask = np.zeros((height, width), dtype=np.uint8)
         
-        # Mark all detected regions in the mask
+        # Mark only target regions in the mask (sadece hedef sınıf için mask oluştur)
         for detection in detections:
-            x, y, w, h = detection[:4]
-            
-            # Make sure coordinates are valid
-            x = max(0, int(x))
-            y = max(0, int(y))
-            x2 = min(width, x + int(w))
-            y2 = min(height, y + int(h))
-            
-            # Fill the detected region in the mask
-            mask[y:y2, x:x2] = 255
+            if len(detection) >= 7:  # is_target değerini içeren detections
+                x, y, w, h, conf, class_id, is_target = detection[:7]
+                
+                if is_target:  # Sadece hedef nesneler için mask uygula
+                    # Make sure coordinates are valid
+                    x = max(0, int(x))
+                    y = max(0, int(y))
+                    x2 = min(width, x + int(w))
+                    y2 = min(height, y + int(h))
+                    
+                    # Fill the detected region in the mask
+                    target_mask[y:y2, x:x2] = 255
         
         # Create a semi-transparent black overlay
         overlay = frame.copy()
-        # Apply black color on the regions that are not inside detection bounding boxes (where mask is 0)
-        overlay[mask == 0] = [0, 0, 0]  # Black color
+        # Apply black color on the regions that are not inside target detection bounding boxes
+        overlay[target_mask == 0] = [0, 0, 0]  # Black color
         
         # Blend the original frame with the overlay
         alpha = 0.3  # 30% of original image (70% opacity for black overlay)
@@ -240,7 +304,11 @@ class EngagementModeService(QObject):
         
         # Draw each detection
         for detection in detections:
-            x, y, w, h, conf, class_id = detection[:6]
+            if len(detection) >= 7:  # is_target değerini içeren detections
+                x, y, w, h, conf, class_id, is_target = detection[:7]
+            else:
+                x, y, w, h, conf, class_id = detection[:6]
+                is_target = False
             
             # Get class name
             class_name = "unknown"
@@ -252,17 +320,33 @@ class EngagementModeService(QObject):
             if class_name in engagement_colors:
                 color = engagement_colors[class_name]
             
+            # Hedef sınıfı daha belirgin göster
+            thickness = 3 if is_target else 1
+            
             # Draw rectangle around detected object
-            cv2.rectangle(output, (x, y), (x + w, y + h), color, 2)
+            cv2.rectangle(output, (x, y), (x + w, y + h), color, thickness)
             
             # Prepare label text with confidence
             label = f"{class_name}: {conf:.2f}"
             
-            # Draw label background
-            text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
-            cv2.rectangle(output, (x, y - 20), (x + text_size[0], y), color, -1)
-            
-            # Draw label text (with black color for better visibility)
-            cv2.putText(output, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+            # Hedef sınıf için daha belirgin etiket
+            if is_target:
+                # Draw label background
+                text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                cv2.rectangle(output, (x, y - 25), (x + text_size[0], y), color, -1)
+                
+                # Draw label text
+                cv2.putText(output, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            else:
+                # Hedef olmayan sınıflar için daha küçük ve şeffaf etiket
+                text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
+                
+                # Şeffaf arka plan ile birleştirme
+                overlay_text = output.copy()
+                cv2.rectangle(overlay_text, (x, y - 20), (x + text_size[0], y), color, -1)
+                output = cv2.addWeighted(overlay_text, 0.5, output, 0.5, 0)
+                
+                # Daha küçük yazı
+                cv2.putText(output, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
         
         return output 

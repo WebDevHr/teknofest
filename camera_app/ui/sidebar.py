@@ -395,6 +395,8 @@ class MenuSidebar(Sidebar):
                                               shapes_icon, checkable=True)
         self.engagement_hybrid_button = self.create_icon_button("Angajman Mode\n(Hibrit)", 
                                               shapes_icon, checkable=True)
+        self.engagement_board_button = self.create_icon_button("Angajman Tahtası Okuması", 
+                                              shapes_icon, checkable=True)
         
         # Create emergency stop button with warning icon
         self.emergency_stop_button = QPushButton("   ACİL STOP")  # Boşluklu metin ekle
@@ -456,7 +458,8 @@ class MenuSidebar(Sidebar):
             self.capture_button, self.save_button, self.fps_button, self.tracking_button,
             self.balloon_dl_button, self.balloon_classic_button,
             self.friend_foe_dl_button, self.friend_foe_classic_button,
-            self.engagement_dl_button, self.engagement_hybrid_button
+            self.engagement_dl_button, self.engagement_hybrid_button,
+            self.engagement_board_button
         ]
         
         # Store icons paths and alternates for theme updates
@@ -474,7 +477,8 @@ class MenuSidebar(Sidebar):
             self.friend_foe_dl_button: friend_foe_icon,
             self.friend_foe_classic_button: friend_foe_icon,
             self.engagement_dl_button: shapes_icon,
-            self.engagement_hybrid_button: shapes_icon
+            self.engagement_hybrid_button: shapes_icon,
+            self.engagement_board_button: shapes_icon
         }
         
         # Add buttons to sidebar in the requested order
@@ -505,6 +509,7 @@ class MenuSidebar(Sidebar):
         self.add_widget(self.create_stage_title("3. Aşama"))
         self.add_widget(self.engagement_dl_button)
         self.add_widget(self.engagement_hybrid_button)
+        self.add_widget(self.engagement_board_button)
         
         # Add stretch to keep the buttons centered
         self.add_stretch()

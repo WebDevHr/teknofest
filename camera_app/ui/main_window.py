@@ -19,6 +19,7 @@ from services.camera_service import CameraService
 from services.balloon_detector_service import BalloonDetectorService
 from services.friend_foe_service import FriendFoeService
 from services.engagement_mode_service import EngagementModeService
+from services.engagement_board_service import EngagementBoardService
 from services.mock_service import MockService
 from services.pan_tilt_service import PanTiltService
 from ui.sidebar import LogSidebar, MenuSidebar, IconThemeManager
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.friend_foe_classic_button.clicked.connect(self.on_friend_foe_classic_clicked)
         self.menu_sidebar.engagement_dl_button.clicked.connect(self.on_engagement_dl_clicked)
         self.menu_sidebar.engagement_hybrid_button.clicked.connect(self.on_engagement_hybrid_clicked)
+        self.menu_sidebar.engagement_board_button.clicked.connect(self.on_engagement_board_clicked)
         self.menu_sidebar.fps_button.clicked.connect(self.on_fps_clicked)
         self.menu_sidebar.theme_button.clicked.connect(self.toggle_theme)
         self.menu_sidebar.exit_button.clicked.connect(self.on_exit_clicked)
@@ -840,25 +842,31 @@ class MainWindow(QMainWindow):
                           "Tüm işlemler durduruldu.\nYeniden başlatmak için uygulamayı kapatıp tekrar açın.")
 
     def _stop_all_detection_services(self):
-        """Stop all detection services."""
+        """Stop all active detection services."""
+        # Stop balloon detector if active
         if hasattr(self, 'balloon_detector') and self.balloon_detector:
             self.balloon_detector.stop()
+            self.logger.info("Balon dedektör servisi durduruldu")
             
+        # Stop friend/foe detector if active
         if hasattr(self, 'friend_foe_detector') and self.friend_foe_detector:
             self.friend_foe_detector.stop()
+            self.logger.info("Dost/Düşman dedektör servisi durduruldu")
             
+        # Stop engagement detector if active
         if hasattr(self, 'engagement_detector') and self.engagement_detector:
             self.engagement_detector.stop()
+            self.logger.info("Angajman dedektör servisi durduruldu")
             
-        # Stop any mock services
-        if hasattr(self, 'balloon_classic_mock') and self.balloon_classic_mock:
-            self.balloon_classic_mock.stop()
+        # Stop engagement board detector if active
+        if hasattr(self, 'engagement_board_detector') and self.engagement_board_detector:
+            self.engagement_board_detector.stop()
+            self.logger.info("Angajman tahtası dedektör servisi durduruldu")
             
-        if hasattr(self, 'friend_foe_classic_mock') and self.friend_foe_classic_mock:
-            self.friend_foe_classic_mock.stop()
-            
-        if hasattr(self, 'engagement_hybrid_mock') and self.engagement_hybrid_mock:
-            self.engagement_hybrid_mock.stop()
+        # Stop mock service if active
+        if hasattr(self, 'mock_detector') and self.mock_detector:
+            self.mock_detector.stop()
+            self.logger.info("Mock dedektör servisi durduruldu")
 
     def on_balloon_dl_clicked(self):
         """Handle balloon detection with deep learning button click."""
@@ -974,18 +982,21 @@ class MainWindow(QMainWindow):
                 self.engagement_hybrid_mock.stop()
 
     def _uncheck_other_detection_buttons(self, current_button):
-        """Uncheck all detection buttons except the current one."""
-        buttons = [
+        """Uncheck other detection mode buttons when one is checked."""
+        # Dictionary of all detection buttons
+        buttons = {
             self.menu_sidebar.balloon_dl_button,
             self.menu_sidebar.balloon_classic_button,
             self.menu_sidebar.friend_foe_dl_button,
             self.menu_sidebar.friend_foe_classic_button,
             self.menu_sidebar.engagement_dl_button,
-            self.menu_sidebar.engagement_hybrid_button
-        ]
+            self.menu_sidebar.engagement_hybrid_button,
+            self.menu_sidebar.engagement_board_button
+        }
         
+        # Uncheck all buttons except the current one
         for button in buttons:
-            if button != current_button:
+            if button != current_button and button.isChecked():
                 button.setChecked(False)
 
     def toggle_fullscreen(self):
@@ -1074,7 +1085,7 @@ class MainWindow(QMainWindow):
         # Start service
         self.friend_foe_detector.start()
     
-    def init_engagement_detector(self):
+    def init_engagement_detector(self, target_class=None):
         """Initialize the service for engagement mode using the engagement-best.pt model."""
         if not hasattr(self, 'engagement_detector') or not self.engagement_detector:
             # Create engagement detector service
@@ -1090,6 +1101,10 @@ class MainWindow(QMainWindow):
                 return
             
             self.logger.info("Angajman dedektör servisi başlatıldı - 9 sınıf: red-circle, red-square, red-triangle, blue-circle, blue-square, blue-triangle, green-circle, green-square, green-triangle")
+            
+        # Hedef sınıfı ayarla (belirtilmişse)
+        if target_class is not None:
+            self.engagement_detector.set_target_class(target_class)
             
         # Start service
         self.engagement_detector.start()
@@ -1120,7 +1135,7 @@ class MainWindow(QMainWindow):
         # This uses the engagement detector service with engagement-best.pt model
         if is_active:
             self.logger.info("Angajman Modu (Derin Öğrenmeli) aktif edildi - engagement-best.pt modeli kullanılıyor")
-            self.init_engagement_detector()  # Initialize Engagement detector if needed
+            self.init_engagement_detector()  # Initialize Engagement detector with no target class
             self.camera_view.set_detection_active(True)
             self.camera_view.set_detection_mode("engagement")
         else:
@@ -1210,3 +1225,83 @@ class MainWindow(QMainWindow):
         """Initialize the PanTiltService."""
         self.pan_tilt_service = PanTiltService()
         self.logger.info("PanTilt servisi başlatıldı")
+
+    def on_engagement_board_clicked(self):
+        """Handle engagement board button click."""
+        is_active = self.menu_sidebar.engagement_board_button.isChecked()
+        
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.engagement_board_button)
+            
+            # Stop other active services
+            self._stop_all_detection_services()
+        
+        # This uses the engagement board detector service with OCR
+        if is_active:
+            self.logger.info("Angajman Tahtası Okuması modu aktif edildi - YOLO ve OCR kullanılıyor")
+            self.init_engagement_board_detector()  # Initialize Engagement board detector
+            
+            # Set detection mode for camera view
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_view.set_detection_active(True)
+                self.camera_view.set_detection_mode("engagement_board")
+                self.logger.info("Tek kare yakalama ve analiz modu aktif - karakter ve şekil tespit edildiğinde duracak")
+            else:
+                self.logger.error("Kamera servisi bulunamadı")
+        else:
+            self.logger.info("Angajman Tahtası Okuması modu devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+            # Stop the service if it exists
+            if hasattr(self, 'engagement_board_detector') and self.engagement_board_detector:
+                self.engagement_board_detector.stop()
+                
+    def init_engagement_board_detector(self):
+        """Initialize the service for engagement board detection using YOLO and OCR."""
+        if not hasattr(self, 'engagement_board_detector') or not self.engagement_board_detector:
+            # Create engagement board detector service
+            self.engagement_board_detector = EngagementBoardService()
+            
+            # Tespit tamamlandığında engagement mode'a geç
+            self.engagement_board_detector.detection_completed.connect(self.switch_to_engagement_mode)
+            
+            # Connect to camera service
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.engagement_board_detector)
+            
+            # Initialize service
+            if not self.engagement_board_detector.initialize():
+                self.logger.error("Angajman tahtası dedektör servisi başlatılamadı")
+                return
+            
+            self.logger.info("Angajman tahtası dedektör servisi başlatıldı - YOLO ve OCR aktif")
+        else:
+            # Reset detection_done flag if service exists
+            self.engagement_board_detector.detection_done = False
+            self.engagement_board_detector.ocr_text = ""
+            self.engagement_board_detector.class_name = ""
+            
+        # Start service
+        self.engagement_board_detector.start()
+        
+    def switch_to_engagement_mode(self, target_class):
+        """
+        EngagementBoardService'ten tespit tamamlandığında Engagement Mode'a geç.
+        Sadece belirtilen sınıfı tespit et.
+        """
+        self.logger.info(f"Angajman tahtası tespiti tamamlandı, Angajman Mode'a geçiliyor. Hedef sınıf: {target_class}")
+        
+        # Engagement board detector'ü durdur
+        if hasattr(self, 'engagement_board_detector') and self.engagement_board_detector:
+            self.engagement_board_detector.stop()
+            
+        # Engagement mode detector'ü başlat ve hedef sınıfı ayarla
+        self.init_engagement_detector(target_class)
+        
+        # Engagement mode butonunu seç, engagement board butonunu seçme
+        self.menu_sidebar.engagement_dl_button.setChecked(True)
+        self.menu_sidebar.engagement_board_button.setChecked(False)
+        
+        # Kamera görünümünü güncelle
+        self.camera_view.set_detection_active(True)
+        self.camera_view.set_detection_mode("engagement")
