@@ -15,6 +15,7 @@ import torch
 import easyocr
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from services.logger_service import LoggerService
+from utils.config import config
 from ultralytics import YOLO
 from PIL import Image, ImageDraw, ImageFont
 
@@ -31,10 +32,9 @@ class EngagementBoardService(QObject):
         super().__init__()
         self.logger = LoggerService()
         
-        # Set default model path if not provided
+        # Set default model path from config if not provided
         if model_path is None:
-            self.model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                         "models", "engagement-best.pt")
+            self.model_path = config.get_engagement_model_path()
         else:
             self.model_path = model_path
             

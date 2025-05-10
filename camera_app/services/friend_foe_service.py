@@ -14,6 +14,7 @@ import os
 import torch
 from PyQt5.QtCore import QObject, pyqtSignal
 from services.logger_service import LoggerService
+from utils.config import config
 from ultralytics import YOLO
 from collections import defaultdict
 import time
@@ -29,10 +30,9 @@ class FriendFoeService(QObject):
         super().__init__()
         self.logger = LoggerService()
         
-        # Set default model path if not provided
+        # Set default model path from config if not provided
         if model_path is None:
-            self.model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                         "models", "friend_foe.pt")
+            self.model_path = config.get_friend_foe_model_path()
         else:
             self.model_path = model_path
             
@@ -187,7 +187,7 @@ class FriendFoeService(QObject):
                 iou=0.45,   # IOU eşiği
                 half=half,  # Half precision için
                 imgsz=img_size,  # Resim boyutu
-                max_det=20,  # Maksimum tespit sayısı
+                max_det=10,  # Maksimum tespit sayısı
             )
             
             # Sonuçları işle

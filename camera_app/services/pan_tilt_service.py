@@ -5,7 +5,7 @@
 Pan-Tilt Control Service
 ----------------------
 Service for controlling pan-tilt mechanism using Image-Based Visual Servoing (IBVS).
-Uses a 2-DOF pan-tilt platform connected to an Arduino on COM7.
+Uses a 2-DOF pan-tilt platform connected to an Arduino on COM4.
 """
 
 import serial
@@ -35,7 +35,7 @@ class PanTiltService(QObject):
     # Signals
     command_sent = pyqtSignal(str)  # Signal emitted when a command is sent
     
-    def __init__(self, serial_port="COM7", baud_rate=115200):
+    def __init__(self, serial_port="COM4", baud_rate=115200):
         super().__init__()
         self.logger = LoggerService()
         
@@ -61,7 +61,7 @@ class PanTiltService(QObject):
         self.smoothing = 0.8  # Smoothing factor (0-1, higher = smoother)
         
         # Minimum adjustment threshold to avoid tiny movements
-        self.min_adjustment = 0.2  # Minimum angle change to actually move servos
+        self.min_adjustment = 0.1  # Minimum angle change to actually move servos
         
         # Exponential moving average for servo positions
         self.ema_factor = 0.8  # EMA factor for position filtering (higher = faster response)

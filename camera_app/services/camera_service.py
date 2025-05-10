@@ -189,6 +189,7 @@ class CameraService(QObject):
             
         width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"Kamera boyutları: {width}x{height}")
         return (width, height)
     
     def capture_image(self):

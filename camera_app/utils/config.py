@@ -46,8 +46,8 @@ class Config:
         self.app_version = "1.0.0"
         
         # Camera settings
-        self.camera_id = 0
-        self.camera_fps = 30
+        self.camera_id = int(os.getenv('CAMERA_ID', 0))
+        self.camera_fps = int(os.getenv('CAMERA_FPS', 30))
         
         # UI settings
         self.theme = "dark"
@@ -64,8 +64,16 @@ class Config:
         
         # Model dizini ve model dosyaları 
         self.model_dir = os.getenv('MODEL_DIR', DEFAULT_MODELS_DIR)
+        
+        # Model dosya adları
         self.balloon_model = os.getenv('BALLOON_MODEL', 'bests_balloon_30_dark.pt')
         self.engagement_model = os.getenv('ENGAGEMENT_MODEL', 'engagement-best.pt')
+        self.friend_foe_model = os.getenv('FRIEND_FOE_MODEL', 'friend_foe(v8n).pt')
+        self.balloon_classic_model = os.getenv('BALLOON_CLASSIC_MODEL', 'bestv8m_100_640.pt')
+        self.engagement_shape_model = os.getenv('ENGAGEMENT_SHAPE_MODEL', 'engagement-shape.pt')
+        
+        # Diğer ayarlar
+        self.use_gpu = os.getenv('USE_GPU', 'True').lower() in ('true', '1', 't')
     
     def get(self, key, default=None):
         """Get a configuration value."""
@@ -117,6 +125,18 @@ class Config:
     def get_engagement_model_path(self):
         """Get path to engagement model."""
         return self.get_model_path(self.engagement_model)
+    
+    def get_friend_foe_model_path(self):
+        """Get path to friend/foe model."""
+        return self.get_model_path(self.friend_foe_model)
+    
+    def get_balloon_classic_model_path(self):
+        """Get path to balloon classic model."""
+        return self.get_model_path(self.balloon_classic_model)
+    
+    def get_engagement_shape_model_path(self):
+        """Get path to engagement shape model."""
+        return self.get_model_path(self.engagement_shape_model)
 
 # Create a singleton instance for easy import
 config = Config() 

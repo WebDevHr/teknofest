@@ -16,6 +16,7 @@ import time
 from PyQt5.QtCore import QObject, pyqtSignal
 from services.logger_service import LoggerService
 from services.kalman_filter_service import KalmanFilterService
+from utils.config import config
 from ultralytics import YOLO
 from collections import defaultdict
 
@@ -30,10 +31,9 @@ class BalloonDetectorService(QObject):
         super().__init__()
         self.logger = LoggerService()
         
-        # Set default model path if not provided
+        # Set default model path from config if not provided
         if model_path is None:
-            self.model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                          "models", "bests_balloon_30_dark.pt")
+            self.model_path = config.get_balloon_model_path()
         else:
             self.model_path = model_path
             
@@ -139,6 +139,7 @@ class BalloonDetectorService(QObject):
     def detect(self, frame):
         """
         Detect balloons in a frame and track them.
+        Artık model inputu için frame'i 640x640'a resize ediyoruz ve bounding box'ları orijinal frame boyutuna scale ediyoruz.
         
         Args:
             frame: OpenCV image (BGR format)
@@ -148,6 +149,12 @@ class BalloonDetectorService(QObject):
         """
         if not self.is_initialized or not self.is_running:
             return []
+        
+        # Orijinal frame boyutunu sakla
+        orig_h, orig_w = frame.shape[:2]
+        # Model inputu için frame'i 640x640'a resize et
+        input_size = 640
+        resized_frame = cv2.resize(frame, (input_size, input_size))
         
         # Update processed frames count
         self.processed_frames += 1
@@ -200,27 +207,23 @@ class BalloonDetectorService(QObject):
                 self.kalman_service.mark_processing_start(self.current_frame_id)
                 
             # Performans için en iyi ayarlar
-            half = self.use_gpu  # GPU kullanıyorsa half precision kullan
-            
-            # Resmi daha küçük boyutlara getir (640x640 veya 320x320 gibi)
-            # Orijinal en-boy oranını koru ama tespit için daha küçük boyut kullan
-            img_size = 320 if self.use_gpu else 640  # GPU varsa daha düşük çözünürlük yeterli olabilir
+            half = self.use_gpu
             
             # YOLOv8 ile tespit yap, ByteTrack kullanarak
             results = self.model.track(
-                frame, 
+                resized_frame, 
                 persist=True, 
                 tracker="bytetrack.yaml", 
                 verbose=False, 
                 conf=0.25,  # Güven eşiği - düşük değer daha fazla tespit (ama yanlış pozitif olabilir)
                 iou=0.45,   # IOU eşiği - kutuların çakışması için
                 half=half,  # Half precision için
-                imgsz=img_size,  # Resim boyutu
+                imgsz=input_size,  # Resim boyutu
                 max_det=20,  # Maksimum tespit sayısı
             )
             
-            # Sonuçları işle
-            detections = self._process_results(results, frame.shape, frame_time)
+            # Sonuçları işle (artık scale işlemi yapılacak)
+            detections = self._process_results(results, (orig_h, orig_w), input_size, frame_time)
             
             # Kalman filter için işlem sonu işaretle
             if self.use_kalman:
@@ -265,79 +268,48 @@ class BalloonDetectorService(QObject):
             
         return stale_track_ids
     
-    def _process_results(self, results, frame_shape, frame_time=None):
-        """Process YOLOv8 results to get detections and tracking info."""
+    def _process_results(self, results, orig_shape, input_size=640, frame_time=None):
+        """Process YOLOv8 results to get detections and tracking info. Bounding box'ları orijinal frame boyutuna scale eder."""
         detections = []
+        orig_h, orig_w = orig_shape[:2]
+        scale_x = orig_w / input_size
+        scale_y = orig_h / input_size
         current_time = time.time()
-        
-        # Calculate frame center
-        height, width = frame_shape[:2]
-        frame_center = (width // 2, height // 2)
-        
-        # Mevcut karede görülen track ID'leri kaydet
+        frame_center = (orig_w // 2, orig_h // 2)
         current_track_ids = set()
-        
-        # Sonuçları işle
         for result in results:
             if result.boxes is None or len(result.boxes) == 0:
                 continue
-                
             boxes = result.boxes
-            
-            # Track IDs varsa al
             track_ids = []
             if hasattr(boxes, 'id') and boxes.id is not None:
                 track_ids = boxes.id.int().cpu().tolist()
-            
             for i, box in enumerate(boxes):
-                # Kutu koordinatları
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                
-                # Genişlik ve yükseklik hesapla
+                # Scale bounding box to original frame size
+                x1 = int(x1 * scale_x)
+                y1 = int(y1 * scale_y)
+                x2 = int(x2 * scale_x)
+                y2 = int(y2 * scale_y)
                 w = x2 - x1
                 h = y2 - y1
-                
-                # Merkez noktası
-                center_x = float(x1 + w / 2)
-                center_y = float(y1 + h / 2)
-                
-                # Güven değeri
                 confidence = box.conf[0].cpu().numpy()
-                
-                # Sınıf ID
                 class_id = int(box.cls[0].cpu().numpy())
-                
-                # Track ID (varsa ekle)
                 track_id = -1
                 if i < len(track_ids):
                     track_id = track_ids[i]
-                    
-                    # Bu track ID'yi mevcut görülen ID'ler listesine ekle
                     current_track_ids.add(track_id)
-                    
-                    # Son görülme zamanını güncelle
                     self.last_seen_time[track_id] = current_time
-                    
-                    # Track history'yi güncelle
                     track = self.track_history[track_id]
+                    center_x = float(x1 + w / 2)
+                    center_y = float(y1 + h / 2)
                     track.append((center_x, center_y))
-                    
-                    # Track history'yi sınırla
                     if len(track) > self.max_track_history:
                         track.pop(0)
-                    
-                    # Kalman filtresi güncelle (bounding box konumlarını değiştirmeden)
                     if self.use_kalman and track_id != -1:
-                        # Update Kalman filter with the current position and frame center for initialization
                         self.kalman_service.update(track_id, (center_x, center_y), frame_time, frame_center)
-                        
-                        # Kalman tahmini al - ama bounding box'ları değiştirmek için kullanma
-                        # Sadece görselleştirme için kullanılacak
                         self.kalman_service.predict(track_id, None, frame_center)
-                
-                # Tespit listesine ekle [x, y, w, h, confidence, class_id, track_id]
                 detections.append([int(x1), int(y1), int(w), int(h), float(confidence), class_id, track_id])
-        
         return detections
     
     def draw_detections(self, frame, detections):

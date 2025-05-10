@@ -1196,7 +1196,7 @@ class MainWindow(QMainWindow):
                 # If connection failed, uncheck the button
                 self.menu_sidebar.tracking_button.setChecked(False)
                 QMessageBox.critical(self, "Bağlantı Hatası", 
-                                   "Pan-Tilt servoları ile bağlantı kurulamadı. COM7 bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
+                                   "Pan-Tilt servoları ile bağlantı kurulamadı. COM4 bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
                 return
                 
             # Connect the pan_tilt service to the balloon detector if available
