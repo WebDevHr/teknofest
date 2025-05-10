@@ -61,8 +61,6 @@ class BalloonDetectorService(QObject):
         
         # Performans için ek ayarlar
         self.last_frame_detections = []
-        self.skip_frames = 0
-        self.max_skip_frames = 1  # Her 2 karede bir tespit yap
         
         # Kalman Filter Service
         self.kalman_service = KalmanFilterService()
@@ -124,7 +122,6 @@ class BalloonDetectorService(QObject):
             return False
             
         self.is_running = True
-        self.skip_frames = 0
         # Log
         self.logger.info("Balon dedektör servisi başlatıldı")
         return True
@@ -194,15 +191,6 @@ class BalloonDetectorService(QObject):
         
         if self.use_kalman:
             self.kalman_service.mark_frame_received(self.current_frame_id)
-        
-        # Frame skip stratejisi - her max_skip_frames'de bir tespit yap
-        self.skip_frames += 1
-        if self.skip_frames <= self.max_skip_frames and len(self.last_frame_detections) > 0:
-            # Son tespit edilen nesneleri geri döndür
-            return self.last_frame_detections
-        
-        # Sıfırla
-        self.skip_frames = 0
         
         # Zaman aşımına uğrayan track'leri temizle
         self._remove_stale_tracks(frame_time)
@@ -483,10 +471,6 @@ class BalloonDetectorService(QObject):
         # Tespit sayısını da göster
         cv2.putText(output, f"Detections: {len(detections)}", 
                 (width - 200, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
-        
-        # Skip frame bilgisini göster
-        cv2.putText(output, f"Skip Frame: {self.skip_frames}/{self.max_skip_frames+1}", 
-                (width - 200, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
         
         # Toplam frame sayılarını göster (birikimli)
         cv2.putText(output, f"Total Frames: {self.processed_frames}", 

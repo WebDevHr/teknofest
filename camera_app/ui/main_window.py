@@ -99,6 +99,8 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.capture_button.clicked.connect(self.on_capture_clicked)
         self.menu_sidebar.save_button.clicked.connect(self.on_save_clicked)
         self.menu_sidebar.balloon_dl_button.clicked.connect(self.on_balloon_dl_clicked)
+        self.menu_sidebar.balloon_edge_button.clicked.connect(self.on_balloon_edge_clicked)
+        self.menu_sidebar.balloon_color_button.clicked.connect(self.on_balloon_color_clicked)
         self.menu_sidebar.balloon_classic_button.clicked.connect(self.on_balloon_classic_clicked)
         self.menu_sidebar.friend_foe_dl_button.clicked.connect(self.on_friend_foe_dl_clicked)
         self.menu_sidebar.friend_foe_classic_button.clicked.connect(self.on_friend_foe_classic_clicked)
@@ -524,7 +526,7 @@ class MainWindow(QMainWindow):
             return
             
         # Use a lower FPS for better performance
-        self.camera_service.start(fps=24)
+        self.camera_service.start(fps=30)
     
     def on_camera_error(self, error_message):
         """Handle camera errors."""
@@ -1224,7 +1226,15 @@ class MainWindow(QMainWindow):
     def init_pan_tilt_service(self):
         """Initialize the PanTiltService."""
         self.pan_tilt_service = PanTiltService()
-        self.logger.info("PanTilt servisi başlatıldı")
+        
+        # Connect the pan_tilt_service to the camera_service for visualization
+        if hasattr(self, 'camera_service') and self.camera_service:
+            self.camera_service.set_pan_tilt_service(self.pan_tilt_service)
+            # Update frame dimensions
+            width, height = self.camera_service.get_frame_dimensions()
+            self.pan_tilt_service.set_frame_center(width, height)
+            
+        self.logger.info("PanTilt servisi başlatıldı (Gelişmiş IBVS ile)")
 
     def on_engagement_board_clicked(self):
         """Handle engagement board button click."""
@@ -1305,3 +1315,58 @@ class MainWindow(QMainWindow):
         # Kamera görünümünü güncelle
         self.camera_view.set_detection_active(True)
         self.camera_view.set_detection_mode("engagement")
+
+    def on_balloon_edge_clicked(self):
+        """Handle balloon detection with edge/contour methods button click."""
+        is_active = self.menu_sidebar.balloon_edge_button.isChecked()
+
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_edge_button)
+            self._stop_all_detection_services()
+
+        if is_active:
+            self.logger.info("Hareketli Balon Modu (Kenar/Kontur Yöntemi) aktif edildi")
+            # BalloonClassicService başlat
+            from services.balloon_classic_service import BalloonClassicService
+            self.balloon_edge_service = BalloonClassicService()
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.balloon_edge_service)
+            if not self.balloon_edge_service.initialize():
+                self.logger.error("Klasik balon tespit servisi başlatılamadı!")
+                return
+            self.balloon_edge_service.start()
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("balloon_edge")
+        else:
+            self.logger.info("Hareketli Balon Modu (Kenar/Kontur Yöntemi) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+            if hasattr(self, 'balloon_edge_service') and self.balloon_edge_service:
+                self.balloon_edge_service.stop()
+
+    def on_balloon_color_clicked(self):
+        """Handle balloon detection with color segmentation button click."""
+        is_active = self.menu_sidebar.balloon_color_button.isChecked()
+
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_color_button)
+            self._stop_all_detection_services()
+
+        if is_active:
+            self.logger.info("Hareketli Balon Modu (Renk Segmentasyon) aktif edildi")
+            from services.balloon_color_service import BalloonColorService
+            self.balloon_color_service = BalloonColorService()
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.balloon_color_service)
+            if not self.balloon_color_service.initialize():
+                self.logger.error("Renk segmentasyon balon tespit servisi başlatılamadı!")
+                return
+            self.balloon_color_service.start()
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("balloon_color")
+        else:
+            self.logger.info("Hareketli Balon Modu (Renk Segmentasyon) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+            if hasattr(self, 'balloon_color_service') and self.balloon_color_service:
+                self.balloon_color_service.stop()

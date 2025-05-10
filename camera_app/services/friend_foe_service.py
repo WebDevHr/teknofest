@@ -4,7 +4,7 @@
 """
 Friend/Foe Detector Service
 ---------------------
-Service for detecting friends and foes using YOLO model.
+Service for detecting friend and foe objects using YOLO model.
 For 2. Aşama - Hareketli Dost/Düşman Mode (Derin Öğrenmeli)
 """
 
@@ -32,7 +32,7 @@ class FriendFoeService(QObject):
         # Set default model path if not provided
         if model_path is None:
             self.model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                         "models", "friend_foe(v8n).pt")
+                                         "models", "friend_foe.pt")
         else:
             self.model_path = model_path
             
@@ -47,20 +47,18 @@ class FriendFoeService(QObject):
         else:
             self.logger.info("GPU kullanılamıyor - CPU kullanılacak")
         
-        # Friend/Foe class names
+        # Class names
         self.class_names = ["dost", "dusman"]  # Varsayılan
 
-        # Performans için ek ayarlar
-        self.last_frame_detections = []
-        self.skip_frames = 0
-        self.max_skip_frames = 1  # Her 2 karede bir tespit yap
-        
         # Tracking related variables
         self.track_history = defaultdict(lambda: [])
-        self.max_track_history = 30
+        self.max_track_history = 10  
+        
+        # Performans için ek ayarlar
+        self.last_frame_detections = []
         
         # FPS calculation
-        self.fps = 0  # Current FPS
+        self.fps = 0  # Current FPS 
         self.fps_update_interval = 1.0  # Update FPS every 1 second
         self.last_fps_update_time = time.time()
         self.frame_times = []  # Store frame timestamps for FPS calculation
@@ -110,7 +108,6 @@ class FriendFoeService(QObject):
             return False
             
         self.is_running = True
-        self.skip_frames = 0
         # Log
         self.logger.info("Dost/Düşman dedektör servisi başlatıldı")
         return True
@@ -123,7 +120,7 @@ class FriendFoeService(QObject):
     
     def detect(self, frame):
         """
-        Detect friend/foe objects in a frame.
+        Detect friends and foes in a frame and track them.
         
         Args:
             frame: OpenCV image (BGR format)
@@ -172,15 +169,6 @@ class FriendFoeService(QObject):
             # Add current time to IBVS frame times for IBVS FPS
             self.frame_times_ibvs.append(frame_time)
         
-        # Frame skip stratejisi - her max_skip_frames'de bir tespit yap
-        self.skip_frames += 1
-        if self.skip_frames <= self.max_skip_frames and len(self.last_frame_detections) > 0:
-            # Son tespit edilen nesneleri geri döndür
-            return self.last_frame_detections
-        
-        # Sıfırla
-        self.skip_frames = 0
-            
         try:
             # Performans için en iyi ayarlar
             half = self.use_gpu  # GPU kullanıyorsa half precision kullan
@@ -337,34 +325,23 @@ class FriendFoeService(QObject):
                 w = width - x
             if y + h > height:
                 h = height - y
-                
-            if w <= 0 or h <= 0:
-                continue
+            
+            # Select color based on class - green for friend, red for foe
+            color = (0, 255, 0)  # Default: green for friend
+            if class_id == dusman_class_id:  # If this is a dusman (enemy)
+                color = (0, 0, 255)  # Red for enemy
+            
+            # Draw rectangle around detected object
+            cv2.rectangle(output, (x, y), (x + w, y + h), color, 2)
             
             # Get class name
             class_name = "unknown"
             if class_id < len(self.class_names):
                 class_name = self.class_names[class_id]
             
-            # Color scheme for friend/foe detection
-            friend_foe_colors = {
-                'dost': (0, 255, 0),     # Green for friends
-                'dusman': (0, 0, 255),    # Red for enemies
-                'düşman': (0, 0, 255),    # Red for enemies (Turkish)
-                'enemy': (0, 0, 255)      # Red for enemies (English)
-            }
-            
-            # Choose color based on class name
-            color = (0, 255, 0)  # Default green
-            if class_name in friend_foe_colors:
-                color = friend_foe_colors[class_name]
-            
-            # Draw rectangle around detected object
-            cv2.rectangle(output, (x, y), (x + w, y + h), color, 2)
-            
             # Prepare label text with confidence
-            conf = detection[4]
-            label = f"{class_name}: {conf:.2f}"
+            confidence = detection[4]
+            label = f"{class_name}: {confidence:.2f}"
             if track_id != -1:
                 label += f" ID:{track_id}"
             
@@ -383,14 +360,14 @@ class FriendFoeService(QObject):
                 if len(track) > 1:
                     # Draw lines connecting previous positions
                     points = np.array(track, dtype=np.int32).reshape((-1, 1, 2))
-                    cv2.polylines(output, [points], False, color, 2)
+                    cv2.polylines(output, [points], False, color, 1)
         
         # Draw crosshair at the center of the frame
         center_x = width // 2
         center_y = height // 2
         
         # Set crosshair properties
-        crosshair_color = (0, 0, 255)  # Kırmızı (BGR formatında)
+        crosshair_color = (0, 0, 255)  # Red (BGR format)
         crosshair_size = 20
         crosshair_thickness = 2
         
@@ -415,8 +392,8 @@ class FriendFoeService(QObject):
                  crosshair_color, 
                  -1)  # -1 thickness means filled circle
         
-        # Draw performance stats - mor renkte gösterelim
-        stats_color = (255, 0, 255)  # Mor renk (magenta)
+        # Draw performance stats
+        stats_color = (255, 0, 255)  # Magenta
         
         cv2.putText(output, f"FPS: {self.fps}", 
                 (width - 200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
@@ -430,10 +407,6 @@ class FriendFoeService(QObject):
         # Tespit sayısını da göster
         cv2.putText(output, f"Detections: {len(detections)}", 
                 (width - 200, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
-        
-        # Skip frame bilgisini göster
-        cv2.putText(output, f"Skip Frame: {self.skip_frames}/{self.max_skip_frames+1}", 
-                (width - 200, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, stats_color, 2)
         
         # Toplam frame sayılarını göster (birikimli)
         cv2.putText(output, f"Total Frames: {self.processed_frames}", 

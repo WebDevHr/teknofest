@@ -385,6 +385,10 @@ class MenuSidebar(Sidebar):
         # Create detection mode buttons with two-line text
         self.balloon_dl_button = self.create_icon_button("Hareketli Balon Mode\n(Derin Öğrenmeli)", 
                                               balloon_icon, checkable=True)
+        self.balloon_edge_button = self.create_icon_button("Hareketli Balon Mode\n(Kenar/Kontur Yöntemi)", 
+                                              balloon_icon, checkable=True)
+        self.balloon_color_button = self.create_icon_button("Hareketli Balon Mode\n(Renk Segmentasyon)", 
+                                              balloon_icon, checkable=True)
         self.balloon_classic_button = self.create_icon_button("Hareketli Balon Mode\n(Klasik Yöntemler)", 
                                               balloon_icon, checkable=True)
         self.friend_foe_dl_button = self.create_icon_button("Hareketli Dost/Düşman Mode\n(Derin Öğrenmeli)", 
@@ -456,7 +460,7 @@ class MenuSidebar(Sidebar):
         self.buttons = [
             self.theme_button, self.settings_button, self.exit_button,
             self.capture_button, self.save_button, self.fps_button, self.tracking_button,
-            self.balloon_dl_button, self.balloon_classic_button,
+            self.balloon_dl_button, self.balloon_edge_button, self.balloon_color_button, self.balloon_classic_button,
             self.friend_foe_dl_button, self.friend_foe_classic_button,
             self.engagement_dl_button, self.engagement_hybrid_button,
             self.engagement_board_button
@@ -473,6 +477,8 @@ class MenuSidebar(Sidebar):
             self.fps_button: os.path.join(self.icon_base_dir, "speedometer.png"),
             self.tracking_button: os.path.join(self.icon_base_dir, "target.png"),
             self.balloon_dl_button: balloon_icon,
+            self.balloon_edge_button: balloon_icon,
+            self.balloon_color_button: balloon_icon,
             self.balloon_classic_button: balloon_icon,
             self.friend_foe_dl_button: friend_foe_icon,
             self.friend_foe_classic_button: friend_foe_icon,
@@ -492,6 +498,8 @@ class MenuSidebar(Sidebar):
         # İlk grup - Balon
         self.add_widget(self.create_stage_title("1. Aşama"))
         self.add_widget(self.balloon_dl_button)
+        self.add_widget(self.balloon_edge_button)
+        self.add_widget(self.balloon_color_button)
         self.add_widget(self.balloon_classic_button)
         
         # Divider ekle
@@ -683,14 +691,14 @@ class MenuSidebar(Sidebar):
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 16px;
-                        padding-right: 10px;
-                        padding-top: 10px;
-                        padding-bottom: 10px;
+                        padding-left: 12px;
+                        padding-right: 8px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
                         color: white;
                         font-size: 13px;
                         font-weight: normal;
-                        min-height: 55px;
+                        min-height: 32px;
                         border-radius: 5px;
                     }
                     QPushButton:hover {
@@ -706,14 +714,14 @@ class MenuSidebar(Sidebar):
                 button.setStyleSheet("""
                     QPushButton {
                         text-align: left;
-                        padding-left: 16px;
-                        padding-right: 10px;
-                        padding-top: 10px;
-                        padding-bottom: 10px;
+                        padding-left: 12px;
+                        padding-right: 8px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
                         color: #333333;
                         font-size: 13px;
                         font-weight: normal;
-                        min-height: 55px;
+                        min-height: 32px;
                         border-radius: 5px;
                     }
                     QPushButton:hover {
@@ -930,14 +938,14 @@ class MenuSidebar(Sidebar):
                     button.setStyleSheet("""
                         QPushButton {
                             text-align: left;
-                            padding-left: 16px;
-                            padding-right: 10px;
-                            padding-top: 10px;
-                            padding-bottom: 10px;
+                            padding-left: 12px;
+                            padding-right: 8px;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
                             color: white;
                             font-size: 13px;
                             font-weight: normal;
-                            min-height: 55px;
+                            min-height: 32px;
                             border-radius: 5px;
                         }
                         QPushButton:hover {
@@ -953,14 +961,14 @@ class MenuSidebar(Sidebar):
                     button.setStyleSheet("""
                         QPushButton {
                             text-align: left;
-                            padding-left: 16px;
-                            padding-right: 10px;
-                            padding-top: 10px;
-                            padding-bottom: 10px;
+                            padding-left: 12px;
+                            padding-right: 8px;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
                             color: #333333;
                             font-size: 13px;
                             font-weight: normal;
-                            min-height: 55px;
+                            min-height: 32px;
                             border-radius: 5px;
                         }
                         QPushButton:hover {

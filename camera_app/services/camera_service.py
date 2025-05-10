@@ -133,6 +133,26 @@ class CameraService(QObject):
                 
                 # Draw detections on frame
                 frame = self.detector_service.draw_detections(frame, detections)
+                
+                # Apply IBVS visualization if pan-tilt service is available and tracking
+                if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service and self.pan_tilt_service.is_tracking:
+                    # Find the target detection that's being tracked
+                    target_detection = None
+                    target_id = self.pan_tilt_service.target_id
+                    
+                    if target_id is not None:
+                        # Look for the specific target ID
+                        for detection in detections:
+                            if len(detection) > 6 and detection[6] == target_id:
+                                target_detection = detection
+                                break
+                    elif detections:
+                        # Just use the first detection if no specific target
+                        target_detection = detections[0]
+                    
+                    # Apply IBVS visualization
+                    if target_detection is not None:
+                        frame = self.pan_tilt_service.draw_tracking_visualization(frame, target_detection)
             
             # Draw FPS counter (after all processing)
             frame = self._draw_fps(frame)
@@ -229,4 +249,14 @@ class CameraService(QObject):
             return True
         else:
             self.logger.error("Mevcut kare kaydedilemedi")
-            return False 
+            return False
+    
+    def set_pan_tilt_service(self, pan_tilt_service):
+        """Set the pan-tilt service for camera movement and IBVS tracking."""
+        self.pan_tilt_service = pan_tilt_service
+        
+        # Update the frame center in the pan-tilt service
+        width, height = self.get_frame_dimensions()
+        pan_tilt_service.set_frame_center(width, height)
+        
+        self.logger.info(f"Pan-tilt service set in Camera Service") 

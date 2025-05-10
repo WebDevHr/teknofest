@@ -14,6 +14,7 @@ import threading
 import numpy as np
 from PyQt5.QtCore import QObject, pyqtSignal
 from services.logger_service import LoggerService
+import cv2
 
 class PanTiltService(QObject):
     """
@@ -76,6 +77,18 @@ class PanTiltService(QObject):
         self.is_tracking = False
         self.tracking_thread = None
         self.tracking_lock = threading.Lock()
+        
+        # Enhanced IBVS parameters from MATLAB implementation
+        self.f = 0.02      # focal length in meters (approximate)
+        self.s_x = 4.8e-6  # pixel size in x (meters/pixel)
+        self.s_y = 4.8e-6  # pixel size in y (meters/pixel)
+        
+        # Assumed depth - will be updated based on target size
+        self.target_depth = 1.0  # Initial depth estimate (meters)
+        
+        # Error history for convergence analysis
+        self.error_history = []
+        self.max_error_history = 30  # Keep last 30 error values
         
         # Initialize
         self.logger.info("Pan-Tilt Service initialized")
@@ -218,43 +231,112 @@ class PanTiltService(QObject):
         # Move to new position
         return self.move_to(new_pan, new_tilt)
     
-    def calculate_control(self, target_x, target_y):
+    def calculate_control(self, target_x, target_y, target_width=None, target_height=None):
         """
-        Calculate pan and tilt adjustments using IBVS.
+        Calculate pan and tilt adjustments using IBVS with enhanced interaction matrix.
         
         Args:
             target_x: x-coordinate of the target in the image
             target_y: y-coordinate of the target in the image
+            target_width: width of the target (for depth estimation)
+            target_height: height of the target (for depth estimation)
             
         Returns:
             Tuple of (pan_adjustment, tilt_adjustment)
         """
-        # Calculate error (distance from center)
+        # Calculate normalized image coordinates (relative to center)
+        # The origin is at the center of the image
+        x = (target_x - self.center_x) * self.s_x
+        y = (target_y - self.center_y) * self.s_y
+        
+        # Calculate error (distance from center in normalized coordinates)
+        e_x = x
+        e_y = y
+        
+        # Calculate error (distance from center in pixel coordinates)
         error_x = target_x - self.center_x
         error_y = target_y - self.center_y
+        
+        # Calculate error magnitude for history
+        error_magnitude = np.sqrt(error_x**2 + error_y**2)
+        self.error_history.append(error_magnitude)
+        
+        # Keep error history at specified size
+        if len(self.error_history) > self.max_error_history:
+            self.error_history.pop(0)
         
         # Apply deadzone to prevent jitter when close to center
         if abs(error_x) < self.deadzone:
             error_x = 0
+            e_x = 0
         if abs(error_y) < self.deadzone:
             error_y = 0
+            e_y = 0
             
-        # CORRECTED AXIS ASSIGNMENT BASED ON OBSERVATIONS:
+        # Estimate depth if width and height are provided
+        if target_width is not None and target_height is not None:
+            # Simple depth estimation based on target size
+            # Assuming larger objects are closer
+            # This is a simplified model - in real applications, you'd use a proper
+            # depth model based on known target dimensions
+            target_size = target_width * target_height
+            # Adjust depth based on target size (inverse relationship)
+            if target_size > 0:
+                # Normalize by maximum possible size (full frame)
+                normalized_size = target_size / (self.center_x * 2 * self.center_y * 2)
+                # Depth ranges from 0.5 to 3.0 meters based on size
+                self.target_depth = 0.5 + (1.0 - min(normalized_size, 1.0)) * 2.5
         
-        # Pan (A1) should respond to vertical error (error_y)
-        # When target is above (negative error_y), pan should move up
-        # When target is below (positive error_y), pan should move down
-        pan_adjustment = -error_y * self.gain / self.center_y * 25
+        # Construct the interaction matrix (Image Jacobian)
+        # This matrix relates changes in image features to camera velocity
+        L = np.array([
+            [-self.f / self.target_depth, 0, e_x / self.target_depth],
+            [0, -self.f / self.target_depth, e_y / self.target_depth]
+        ])
         
-        # Tilt (A0) should respond to horizontal error (error_x)
-        # When target is to the right (positive error_x), tilt should move right
-        # When target is to the left (negative error_x), tilt should move left
-        tilt_adjustment = error_x * self.gain / self.center_x * 20
+        # Define the error vector
+        e = np.array([e_x, e_y])
         
-        # Apply smoothing (lower adjustment = smoother movement)
-        pan_adjustment *= self.smoothing
-        tilt_adjustment *= self.smoothing
+        # IBVS control law: v = -lambda * L+ * e
+        # Where L+ is the pseudo-inverse of L, and lambda is the gain
+        try:
+            # Use Moore-Penrose pseudo-inverse to handle non-square matrices
+            L_pinv = np.linalg.pinv(L)
+            # Calculate control velocity
+            v = -self.gain * L_pinv.dot(e)
+            
+            # Extract pan and tilt velocity components
+            # v[0] is x component (corresponds to tilt)
+            # v[1] is y component (corresponds to pan)
+            # v[2] is z component (depth, not used directly)
+            
+            # Scale to appropriate control signals for the servos
+            pan_adjustment = v[1] * 25.0  # Vertical axis (pan)
+            tilt_adjustment = v[0] * 20.0  # Horizontal axis (tilt)
+            
+            # Apply smoothing factor
+            pan_adjustment *= self.smoothing
+            tilt_adjustment *= self.smoothing
+        except np.linalg.LinAlgError:
+            # Fallback to simplified control if matrix inversion fails
+            self.logger.warning("Matrix inversion failed in IBVS control, using fallback")
+            
+            # CORRECTED AXIS ASSIGNMENT BASED ON OBSERVATIONS:
+            pan_adjustment = -error_y * self.gain / self.center_y * 25
+            tilt_adjustment = error_x * self.gain / self.center_x * 20
+            
+            # Apply smoothing
+            pan_adjustment *= self.smoothing
+            tilt_adjustment *= self.smoothing
         
+        # Check if error is converging
+        if len(self.error_history) >= 5:
+            recent_errors = self.error_history[-5:]
+            if max(recent_errors) - min(recent_errors) < 2.0 and np.mean(recent_errors) < 10.0:
+                # If error is small and stable, reduce adjustments to avoid oscillation
+                pan_adjustment *= 0.5
+                tilt_adjustment *= 0.5
+                
         return (pan_adjustment, tilt_adjustment)
     
     def update_tracking_target(self, target_id=None):
@@ -263,6 +345,39 @@ class PanTiltService(QObject):
             self.target_id = target_id
             if self.target_id is not None:
                 self.logger.info(f"Updated tracking target to balloon ID: {target_id}")
+    
+    def reset_tracking(self):
+        """Reset tracking parameters and clear error history."""
+        self.error_history = []
+        self.target_depth = 1.0
+        
+        # Reset target position to current position
+        self.target_pan = self.pan_angle
+        self.target_tilt = self.tilt_angle
+        
+        # Log the reset
+        self.logger.info("Tracking parameters reset")
+    
+    def get_error_stats(self):
+        """Get statistics about the tracking error for monitoring."""
+        if not self.error_history:
+            return None
+            
+        stats = {
+            "current_error": self.error_history[-1] if self.error_history else 0,
+            "avg_error": np.mean(self.error_history) if self.error_history else 0,
+            "min_error": min(self.error_history) if self.error_history else 0,
+            "max_error": max(self.error_history) if self.error_history else 0,
+            "is_converged": False
+        }
+        
+        # Check if tracking has converged
+        if len(self.error_history) >= 5:
+            recent_errors = self.error_history[-5:]
+            if max(recent_errors) - min(recent_errors) < 2.0 and np.mean(recent_errors) < 10.0:
+                stats["is_converged"] = True
+                
+        return stats
     
     def start_tracking(self, target_id=None):
         """
@@ -273,6 +388,9 @@ class PanTiltService(QObject):
         """
         if self.is_tracking:
             self.stop_tracking()
+        
+        # Reset tracking parameters
+        self.reset_tracking()
         
         # Set target ID
         self.update_tracking_target(target_id)
@@ -321,8 +439,8 @@ class PanTiltService(QObject):
                 target_x = x + w//2
                 target_y = y + h//2
                 
-                # Calculate control adjustments for pan and tilt
-                pan_adj, tilt_adj = self.calculate_control(target_x, target_y)
+                # Calculate control adjustments for pan and tilt using width and height for depth estimation
+                pan_adj, tilt_adj = self.calculate_control(target_x, target_y, w, h)
                 
                 # Apply the adjustments
                 self.move_by(pan_adj, tilt_adj)
@@ -387,4 +505,66 @@ class PanTiltService(QObject):
     def _on_detection_ready(self, frame, detections):
         """Slot for handling new detections from the balloon detector."""
         # Update detections
-        self.set_detections(detections) 
+        self.set_detections(detections)
+    
+    def draw_tracking_visualization(self, frame, target_detection=None):
+        """
+        Draw IBVS tracking visualization on the frame.
+        
+        Args:
+            frame: The camera frame to draw on
+            target_detection: The target detection [x, y, w, h, ...] if available
+            
+        Returns:
+            Modified frame with visualization
+        """
+        if frame is None:
+            return None
+            
+        # Get frame dimensions
+        height, width = frame.shape[:2]
+        
+        # Draw frame center
+        cv2.drawMarker(frame, (self.center_x, self.center_y), (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
+        
+        # Draw deadzone
+        cv2.circle(frame, (self.center_x, self.center_y), self.deadzone, (0, 255, 0), 1)
+        
+        # If tracking is active, draw more details
+        if self.is_tracking and target_detection is not None:
+            # Extract target position
+            x, y, w, h = target_detection[:4]
+            target_x = x + w//2
+            target_y = y + h//2
+            
+            # Draw target center
+            cv2.drawMarker(frame, (target_x, target_y), (0, 0, 255), cv2.MARKER_CROSS, 15, 2)
+            
+            # Draw line from center to target
+            cv2.line(frame, (self.center_x, self.center_y), (target_x, target_y), (255, 0, 0), 2)
+            
+            # Draw error vector
+            error_x = target_x - self.center_x
+            error_y = target_y - self.center_y
+            error_magnitude = np.sqrt(error_x**2 + error_y**2)
+            
+            # Get error stats
+            stats = self.get_error_stats()
+            
+            # Draw text with error information
+            error_text = f"Error: {error_magnitude:.1f}px"
+            cv2.putText(frame, error_text, (width - 300, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            
+            # Draw convergence status
+            if stats and stats.get("is_converged", False):
+                cv2.putText(frame, "Converged", (width - 300, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            
+            # Draw camera parameters
+            depth_text = f"Est. Depth: {self.target_depth:.2f}m"
+            cv2.putText(frame, depth_text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            
+            # Draw servo angles
+            angles_text = f"Pan: {self.pan_angle:.1f}° Tilt: {self.tilt_angle:.1f}°"
+            cv2.putText(frame, angles_text, (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        return frame 
