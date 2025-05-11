@@ -8,9 +8,9 @@ Reusable sidebar component for the camera application.
 """
 
 import os
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTextEdit, QLabel, QHBoxLayout
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTextEdit, QLabel, QHBoxLayout, QGraphicsDropShadowEffect
 from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtSignal, QTimer, QSize, QPointF, QRect, QPoint
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPainterPath, QPen, QBrush
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPainterPath, QPen, QBrush, QFont
 
 class IconThemeManager:
     """Class for handling theme-aware icons."""
@@ -432,8 +432,21 @@ class MenuSidebar(Sidebar):
         self.capture_button.setToolTip("Görüntü Yakala")
         self.save_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "save.png"), icon_only=True)
         self.save_button.setToolTip("Kaydet")
-        self.fps_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "speedometer.png"), icon_only=True)
-        self.fps_button.setToolTip("FPS Göster")
+        
+        # FPS göstergesi - butonlara benzer bir stil ile
+        self.fps_label = QLabel("0", self)
+        self.fps_label.setFont(QFont("Arial", 11, QFont.Bold))
+        self.fps_label.setAlignment(Qt.AlignCenter)
+        self.fps_label.setFixedSize(36, 36)  # Butonlarla aynı boyut
+        self.fps_label.setToolTip("Frames Per Second")
+        
+        # Label'a hafif bir gölge ekle - 3D görünüm için
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(5)
+        shadow.setColor(QColor(0, 0, 0, 50))  # Yarı saydam siyah
+        shadow.setOffset(1, 1)
+        self.fps_label.setGraphicsEffect(shadow)
+        
         self.tracking_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "target.png"), icon_only=True, checkable=True)
         self.tracking_button.setToolTip("Balon Takibi")
         
@@ -443,7 +456,7 @@ class MenuSidebar(Sidebar):
         self.bottom_buttons_layout.setSpacing(5)
         self.bottom_buttons_layout.addWidget(self.capture_button)
         self.bottom_buttons_layout.addWidget(self.save_button)
-        self.bottom_buttons_layout.addWidget(self.fps_button)
+        self.bottom_buttons_layout.addWidget(self.fps_label)
         self.bottom_buttons_layout.addWidget(self.tracking_button)
         
         # Create a widget to hold the bottom layout
@@ -459,7 +472,7 @@ class MenuSidebar(Sidebar):
         # Store buttons for theme updates
         self.buttons = [
             self.theme_button, self.settings_button, self.exit_button,
-            self.capture_button, self.save_button, self.fps_button, self.tracking_button,
+            self.capture_button, self.save_button, self.tracking_button,
             self.balloon_dl_button, self.balloon_edge_button, self.balloon_color_button, self.balloon_classic_button,
             self.friend_foe_dl_button, self.friend_foe_classic_button,
             self.engagement_dl_button, self.engagement_hybrid_button,
@@ -474,7 +487,6 @@ class MenuSidebar(Sidebar):
             self.exit_button: os.path.join(self.icon_base_dir, "exit.png"),
             self.capture_button: os.path.join(self.icon_base_dir, "camera.png"),
             self.save_button: os.path.join(self.icon_base_dir, "save.png"),
-            self.fps_button: os.path.join(self.icon_base_dir, "speedometer.png"),
             self.tracking_button: os.path.join(self.icon_base_dir, "target.png"),
             self.balloon_dl_button: balloon_icon,
             self.balloon_edge_button: balloon_icon,
@@ -981,7 +993,7 @@ class MenuSidebar(Sidebar):
                         }
                     """)
             elif button in [self.theme_button, self.settings_button, self.exit_button,
-                           self.capture_button, self.save_button, self.fps_button]:
+                           self.capture_button, self.save_button, self.tracking_button]:
                 # Top and bottom icon buttons style
                 if is_dark:
                     button.setStyleSheet("""

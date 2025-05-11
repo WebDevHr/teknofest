@@ -42,9 +42,6 @@ class MainWindow(QMainWindow):
         # Set default theme
         self.current_theme = "dark"  # Default to dark theme
         
-        # Create FPS display label - moved before apply_theme is called indirectly by init_ui
-        self.init_fps_display()
-        
         # Initialize UI components
         self.init_ui()
         
@@ -107,7 +104,6 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.engagement_dl_button.clicked.connect(self.on_engagement_dl_clicked)
         self.menu_sidebar.engagement_hybrid_button.clicked.connect(self.on_engagement_hybrid_clicked)
         self.menu_sidebar.engagement_board_button.clicked.connect(self.on_engagement_board_clicked)
-        self.menu_sidebar.fps_button.clicked.connect(self.on_fps_clicked)
         self.menu_sidebar.theme_button.clicked.connect(self.toggle_theme)
         self.menu_sidebar.exit_button.clicked.connect(self.on_exit_clicked)
         self.menu_sidebar.emergency_stop_button.clicked.connect(self.on_emergency_stop_clicked)
@@ -222,6 +218,9 @@ class MainWindow(QMainWindow):
         self.log_sidebar.animation_value_changed.connect(self.update_toggle_button_positions)
         self.menu_sidebar.animation_value_changed.connect(self.update_toggle_button_positions)
         
+        # Create FPS display label before apply_theme is called indirectly by create_sidebar_toggles
+        self.init_fps_display()
+        
         # Apply the default theme
         self.apply_theme()
     
@@ -264,17 +263,12 @@ class MainWindow(QMainWindow):
         # Set the camera view background color
         self.camera_view.setStyleSheet("background-color: #2E2E2E;")
         
-        # Update FPS display style for dark theme
-        self.fps_label.setStyleSheet("""
-            color: white;
-            background-color: rgba(0, 0, 0, 120);
-            border-radius: 5px;
-            padding: 2px 5px;
-        """)
-        
         # Set sidebar backgrounds
         self.log_sidebar.setStyleSheet("background-color: #333333;")
         self.menu_sidebar.setStyleSheet("background-color: #333333;")
+        
+        # Update FPS label style
+        self.update_fps_label_style()
         
         # Update the text area style if method exists
         if hasattr(self.log_sidebar, 'update_text_area_style'):
@@ -359,9 +353,6 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Update FPS label style
-        self.update_fps_label_style()
-        
         # Log theme change
         self.logger.info("Koyu temaya geçildi")
         
@@ -399,17 +390,12 @@ class MainWindow(QMainWindow):
         # Set the camera view background color
         self.camera_view.setStyleSheet("background-color: #F5F5F5;")
         
-        # Update FPS display style for light theme
-        self.fps_label.setStyleSheet("""
-            color: black;
-            background-color: rgba(255, 255, 255, 180);
-            border-radius: 5px;
-            padding: 2px 5px;
-        """)
-        
         # Set sidebar backgrounds
         self.log_sidebar.setStyleSheet("background-color: #E0E0E0;")
         self.menu_sidebar.setStyleSheet("background-color: #E0E0E0;")
+        
+        # Update FPS label style
+        self.update_fps_label_style()
         
         # Update the text area style if method exists
         if hasattr(self.log_sidebar, 'update_text_area_style'):
@@ -494,9 +480,6 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # Update FPS label style
-        self.update_fps_label_style()
-        
         # Log theme change
         self.logger.info("Açık temaya geçildi")
         
@@ -525,8 +508,8 @@ class MainWindow(QMainWindow):
             self.camera_view.setText("Camera not available")
             return
             
-        # Use a lower FPS for better performance
-        self.camera_service.start(fps=30)
+        # Daha yüksek FPS ile kamerayı başlat (60 FPS)
+        self.camera_service.start(fps=60)
     
     def on_camera_error(self, error_message):
         """Handle camera errors."""
@@ -606,11 +589,12 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         """Handle window resize events."""
         super().resizeEvent(event)
+        
+        # Update toggle button positions
         self.update_toggle_button_positions()
         
-        # Update FPS label position when window is resized
-        if hasattr(self, 'fps_label'):
-            self.fps_label.move(20, self.height() - 50)
+        # CameraView'da update_size metodu olmadığı için kaldırıldı
+        # Gerekirse burada kamera görünümü için farklı bir güncelleme yapılabilir
     
     def on_clear_log(self):
         """Handle Clear Log button click."""
@@ -743,44 +727,48 @@ class MainWindow(QMainWindow):
     
     def init_fps_display(self):
         """Initialize the FPS display label."""
-        # Create the FPS label
-        self.fps_label = QLabel("FPS: 0", self)
-        self.fps_label.setFont(QFont("Arial", 14, QFont.Bold))
-        
-        # Set initial position - will be properly repositioned in resizeEvent
-        self.fps_label.move(20, 20)  # Start at a safe position
-        
-        # Style the label based on current theme if theme is already set
-        if hasattr(self, 'current_theme'):
+        # Style the FPS label in the sidebar based on current theme
+        if hasattr(self, 'menu_sidebar'):
             self.update_fps_label_style()
         
         # Create timer to update the FPS
         self.fps_timer = QTimer(self)
         self.fps_timer.timeout.connect(self.update_fps)
-        self.fps_timer.start(500)  # Update twice per second
+        self.fps_timer.start(200)  # Daha sık güncelleme - 200 ms (saniyede 5 güncelleme)
     
     def update_fps(self):
         """Update the FPS display."""
-        if hasattr(self, 'camera_service'):
+        if hasattr(self, 'camera_service') and hasattr(self, 'menu_sidebar'):
             fps = self.camera_service.fps
-            self.fps_label.setText(f"FPS: {fps:.1f}")
+            self.menu_sidebar.fps_label.setText(f"{fps:.1f}")
     
     def update_fps_label_style(self):
         """Update the FPS label style based on current theme."""
-        if self.current_theme == "dark":
-            self.fps_label.setStyleSheet("""
-                color: white;
-                background-color: rgba(0, 0, 0, 120);
-                border-radius: 5px;
-                padding: 2px 5px;
-            """)
-        else:
-            self.fps_label.setStyleSheet("""
-                color: black;
-                background-color: rgba(255, 255, 255, 180);
-                border-radius: 5px;
-                padding: 2px 5px;
-            """)
+        if hasattr(self, 'menu_sidebar'):
+            if self.current_theme == "dark":
+                self.menu_sidebar.fps_label.setStyleSheet("""
+                    background-color: #444444;
+                    color: #4CAF50;
+                    border-radius: 18px;
+                    padding: 5px;
+                    min-width: 36px;
+                    min-height: 36px;
+                    max-width: 36px;
+                    max-height: 36px;
+                    font-weight: bold;
+                """)
+            else:
+                self.menu_sidebar.fps_label.setStyleSheet("""
+                    background-color: #e0e0e0;
+                    color: #2E7D32;
+                    border-radius: 18px;
+                    padding: 5px;
+                    min-width: 36px;
+                    min-height: 36px;
+                    max-width: 36px;
+                    max-height: 36px;
+                    font-weight: bold;
+                """)
 
     def on_exit_clicked(self):
         """Handle exit button click with confirmation dialog."""
@@ -1139,30 +1127,18 @@ class MainWindow(QMainWindow):
             # Stop other active services
             self._stop_all_detection_services()
         
-        # This uses the engagement detector service with engagement-best.pt model
+        # This uses the engagement detector service
         if is_active:
-            self.logger.info("Angajman Modu (Derin Öğrenmeli) aktif edildi - engagement-best.pt modeli kullanılıyor")
-            self.init_engagement_detector()  # Initialize Engagement detector with no target class
+            self.logger.info("Hareketli Angajman Modu (Derin Öğrenmeli) aktif edildi")
+            self.init_engagement_detector()  # Initialize Engagement detector if needed
             self.camera_view.set_detection_active(True)
             self.camera_view.set_detection_mode("engagement")
         else:
-            self.logger.info("Angajman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
+            self.logger.info("Hareketli Angajman Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
             # Stop the service if it exists
             if hasattr(self, 'engagement_detector') and self.engagement_detector:
                 self.engagement_detector.stop()
-    
-    def on_fps_clicked(self):
-        """Handle FPS button click."""
-        if hasattr(self, 'camera_service'):
-            is_showing = self.camera_service.toggle_fps_display()
-            button_text = "FPS Gizle" if is_showing else "FPS Göster"
-            self.menu_sidebar.fps_button.setText(button_text)
-            
-            # Toggle visibility of our FPS label
-            self.fps_label.setVisible(is_showing)
-            
-            self.logger.info(f"FPS gösterimi {'etkinleştirildi' if is_showing else 'devre dışı bırakıldı'}")
 
     def load_existing_logs(self):
         """Load existing logs from the logger service to the sidebar."""
@@ -1185,7 +1161,7 @@ class MainWindow(QMainWindow):
         
         # Log Display Initialized
         self.logger.info("Log gösterimi başlatıldı")
-
+                
     def on_tracking_clicked(self):
         """Handle tracking button click."""
         is_active = self.menu_sidebar.tracking_button.isChecked()

@@ -37,7 +37,12 @@ class CameraService(QObject):
         self.prev_frame_time = 0
         self.curr_frame_time = 0
         self.fps = 0
+        # Always show FPS
         self.show_fps = True
+        
+        # Daha kararlı FPS hesaplaması için
+        self.frame_times = []
+        self.max_frame_samples = 30  # Son 30 kareyi kullanarak ortalama hesapla
         
     def initialize(self):
         """Initialize the camera."""
@@ -52,15 +57,19 @@ class CameraService(QObject):
         self.logger.info(f"Kamera başarıyla başlatıldı (ID: {self.camera_id})")
         return True
     
-    def start(self, fps=30):
+    def start(self, fps=60):
         """Start capturing frames at the specified FPS."""
         if not self.capture or not self.capture.isOpened():
             if not self.initialize():
                 return False
         
-        # Kamerayı daha düşük çözünürlüğe ayarla (performans için)
-        # self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        # self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Yüksek FPS performansı için kamerayı optimize et
+        # Çözünürlüğü ayarla (daha düşük çözünürlük daha yüksek FPS sağlayabilir)
+        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        # OpenCV backend'i için FPS ayarını zorla (bazı kameralarda işe yarayabilir)
+        self.capture.set(cv2.CAP_PROP_FPS, fps)
         
         # Create and start timer
         self.timer = QTimer()
@@ -69,7 +78,6 @@ class CameraService(QObject):
         self.timer.start(interval)
         
         self.is_running = True
-        self.logger.info(f"Kamera {fps} FPS hızında başlatıldı")
         return True
     
     def stop(self):
@@ -92,13 +100,23 @@ class CameraService(QObject):
     def _calculate_fps(self):
         """Calculate the current FPS."""
         self.curr_frame_time = time.time()
+        
         # Calculate FPS only if we have a previous frame time
         if self.prev_frame_time > 0:
             # Calculate time difference between current and previous frame
             time_diff = self.curr_frame_time - self.prev_frame_time
-            # Calculate FPS
-            if time_diff > 0:
-                self.fps = 1 / time_diff
+            
+            # Geçerli süreyi frame_times listesine ekle (son max_frame_samples kareyi takip et)
+            if time_diff > 0:  # Sıfıra bölünmeyi önle
+                self.frame_times.append(time_diff)
+                # Listedeki öğe sayısını sınırla
+                if len(self.frame_times) > self.max_frame_samples:
+                    self.frame_times.pop(0)  # En eski kareyi çıkar
+                
+                # Ortalama FPS hesapla (tüm frame_times öğeleri üzerinden)
+                avg_time = sum(self.frame_times) / len(self.frame_times)
+                self.fps = 1 / avg_time if avg_time > 0 else 0
+        
         # Update previous frame time
         self.prev_frame_time = self.curr_frame_time
     
@@ -173,10 +191,9 @@ class CameraService(QObject):
             self.camera_error.emit("Kare yakalama hatası")
     
     def toggle_fps_display(self):
-        """Toggle FPS display."""
-        self.show_fps = not self.show_fps
-        self.logger.info(f"FPS gösterimi {('etkinleştirildi' if self.show_fps else 'devre dışı bırakıldı')}")
-        return self.show_fps
+        """Toggle FPS display. (Kept for backwards compatibility)"""
+        # Always return True since FPS is always shown now
+        return True
     
     def get_frame_dimensions(self):
         """Get the dimensions of the current frame.
