@@ -5,21 +5,23 @@
 Pan-Tilt Control Service
 ----------------------
 Service for controlling pan-tilt mechanism using Image-Based Visual Servoing (IBVS).
-Uses a 2-DOF pan-tilt platform connected to an Arduino on COM4.
+Uses a 2-DOF pan-tilt platform connected to an Arduino.
 """
 
 import serial
 import time
 import threading
+import math
 import numpy as np
 from PyQt5.QtCore import QObject, pyqtSignal
 from services.logger_service import LoggerService
+from utils.config import config
 import cv2
 
 class PanTiltService(QObject):
     """
-    Service for tracking objects using a pan-tilt mechanism controlled via Arduino.
-    Implements Image-Based Visual Servoing (IBVS) for smooth tracking.
+    Service for controlling pan-tilt servos through Arduino.
+    Implements Image-Based Visual Servoing (IBVS) approach.
     
     Pin and axis assignments based on physical setup:
     - Pan servo on A1 (controls vertical movement)
@@ -34,14 +36,15 @@ class PanTiltService(QObject):
     
     # Signals
     command_sent = pyqtSignal(str)  # Signal emitted when a command is sent
+    tracking_update = pyqtSignal(int, int, int, int)  # target_x, target_y, pan, tilt
     
-    def __init__(self, serial_port="COM4", baud_rate=115200):
+    def __init__(self):
         super().__init__()
         self.logger = LoggerService()
         
-        # Serial connection parameters
-        self.serial_port = serial_port
-        self.baud_rate = baud_rate
+        # Serial connection parameters from config
+        self.serial_port = config.pan_tilt_serial_port
+        self.baud_rate = config.pan_tilt_baud_rate
         self.serial_conn = None
         self.is_connected = False
         

@@ -48,9 +48,6 @@ class MainWindow(QMainWindow):
         # Initialize camera service
         self.init_camera()
         
-        # Initialize pan-tilt service
-        self.init_pan_tilt_service()
-        
         # Show the window in full screen mode instead of maximized
         self.showFullScreen()
         
@@ -1141,7 +1138,7 @@ class MainWindow(QMainWindow):
                 # If connection failed, uncheck the button
                 self.menu_sidebar.tracking_button.setChecked(False)
                 QMessageBox.critical(self, "Bağlantı Hatası", 
-                                   "Pan-Tilt servoları ile bağlantı kurulamadı. COM8 bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
+                                   "Pan-Tilt servoları ile bağlantı kurulamadı. Bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
                 return
                 
             # Connect the pan_tilt service to the balloon detector if available

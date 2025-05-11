@@ -72,6 +72,10 @@ class Config:
         self.balloon_classic_model = os.getenv('BALLOON_CLASSIC_MODEL', 'bestv8m_100_640.pt')
         self.engagement_shape_model = os.getenv('ENGAGEMENT_SHAPE_MODEL', 'engagement-shape.pt')
         
+        # Pan-Tilt servo bağlantı ayarları
+        self.pan_tilt_serial_port = os.getenv('PAN_TILT_SERIAL_PORT', 'COM8')
+        self.pan_tilt_baud_rate = int(os.getenv('PAN_TILT_BAUD_RATE', 115200))
+        
         # Diğer ayarlar
         self.use_gpu = os.getenv('USE_GPU', 'True').lower() in ('true', '1', 't')
     
