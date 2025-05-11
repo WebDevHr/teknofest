@@ -402,36 +402,14 @@ class MenuSidebar(Sidebar):
         self.engagement_board_button = self.create_icon_button("Angajman Tahtası Okuması", 
                                               shapes_icon, checkable=True)
         
-        # Create emergency stop button with warning icon
-        self.emergency_stop_button = QPushButton("   ACİL STOP")  # Boşluklu metin ekle
-        self.emergency_stop_button.setStyleSheet("""
-            QPushButton {
-                background-color: #FF0000;
-                color: white;
-                font-weight: bold;
-                font-size: 14px;
-                text-align: center;
-                border-radius: 5px;
-                padding: 8px 8px 8px 8px;  
-                margin: 10px 5px;
-                min-height: 40px;
-            }
-            QPushButton:hover {
-                background-color: #CC0000;
-            }
-            QPushButton:pressed {
-                background-color: #AA0000;
-            }
-        """)
-        
-        # Acil stop ikonu oluştur
-        self.create_warning_icon_for_button(self.emergency_stop_button)
-        
         # Create bottom action buttons with icons only
-        self.capture_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "camera.png"), icon_only=True)
-        self.capture_button.setToolTip("Görüntü Yakala")
         self.save_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "save.png"), icon_only=True)
         self.save_button.setToolTip("Kaydet")
+        
+        # Servo kontrol butonu - 4'lü ok ikonu ile
+        controls_icon = self.create_controls_icon()
+        self.servo_control_button = self.create_icon_button("", controls_icon, icon_only=True)
+        self.servo_control_button.setToolTip("Manuel Servo Kontrolü")
         
         # FPS göstergesi - butonlara benzer bir stil ile
         self.fps_label = QLabel("0", self)
@@ -454,7 +432,7 @@ class MenuSidebar(Sidebar):
         self.bottom_buttons_layout = QHBoxLayout()
         self.bottom_buttons_layout.setContentsMargins(0, 0, 0, 0)
         self.bottom_buttons_layout.setSpacing(5)
-        self.bottom_buttons_layout.addWidget(self.capture_button)
+        self.bottom_buttons_layout.addWidget(self.servo_control_button)
         self.bottom_buttons_layout.addWidget(self.save_button)
         self.bottom_buttons_layout.addWidget(self.fps_label)
         self.bottom_buttons_layout.addWidget(self.tracking_button)
@@ -472,7 +450,7 @@ class MenuSidebar(Sidebar):
         # Store buttons for theme updates
         self.buttons = [
             self.theme_button, self.settings_button, self.exit_button,
-            self.capture_button, self.save_button, self.tracking_button,
+            self.save_button, self.servo_control_button, self.tracking_button,
             self.balloon_dl_button, self.balloon_edge_button, self.balloon_color_button, self.balloon_classic_button,
             self.friend_foe_dl_button, self.friend_foe_classic_button,
             self.engagement_dl_button, self.engagement_hybrid_button,
@@ -485,8 +463,8 @@ class MenuSidebar(Sidebar):
                                 "light": os.path.join(self.icon_base_dir, "sun.png")},
             self.settings_button: os.path.join(self.icon_base_dir, "settings.png"),
             self.exit_button: os.path.join(self.icon_base_dir, "exit.png"),
-            self.capture_button: os.path.join(self.icon_base_dir, "camera.png"),
             self.save_button: os.path.join(self.icon_base_dir, "save.png"),
+            self.servo_control_button: controls_icon,
             self.tracking_button: os.path.join(self.icon_base_dir, "target.png"),
             self.balloon_dl_button: balloon_icon,
             self.balloon_edge_button: balloon_icon,
@@ -531,11 +509,43 @@ class MenuSidebar(Sidebar):
         self.add_widget(self.engagement_hybrid_button)
         self.add_widget(self.engagement_board_button)
         
+        # Divider ekle
+        self.add_widget(self.create_divider())
+        
+        # Sistem Kontrolleri
+        self.add_widget(self.create_stage_title("Sistem Kontrolleri"))
+        
+        # Create emergency stop button with warning icon
+        self.emergency_stop_button = QPushButton("   ACİL STOP")  # Boşluklu metin ekle
+        self.emergency_stop_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF0000;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                text-align: center;
+                border-radius: 5px;
+                padding: 8px 8px 8px 8px;  
+                margin: 10px 5px;
+                min-height: 40px;
+            }
+            QPushButton:hover {
+                background-color: #CC0000;
+            }
+            QPushButton:pressed {
+                background-color: #AA0000;
+            }
+        """)
+        
+        # Acil stop ikonu oluştur
+        self.create_warning_icon_for_button(self.emergency_stop_button)
+        
+        self.add_widget(self.emergency_stop_button)
+        
         # Add stretch to keep the buttons centered
         self.add_stretch()
         
         # Add emergency stop and bottom buttons at the bottom
-        self.add_widget(self.emergency_stop_button)
         self.add_widget(self.bottom_buttons_widget)
 
     def create_divider_widget(self):
@@ -657,6 +667,54 @@ class MenuSidebar(Sidebar):
         triangle.lineTo(24, 32)  # Sağ alt
         triangle.lineTo(16, 22)  # Tekrar üst nokta
         painter.drawPath(triangle)
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    def create_controls_icon(self):
+        """4'lü ok ikonu oluştur (servo kontrolü için)."""
+        icon_size = QSize(32, 32)
+        pixmap = QPixmap(icon_size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Beyaz arka plan olan biraz daha büyük bir daire çiz
+        if self.is_dark_theme:
+            painter.setPen(QPen(QColor(80, 80, 80), 1))
+            painter.setBrush(QBrush(QColor(70, 70, 70)))
+        else:
+            painter.setPen(QPen(QColor(200, 200, 200), 1))
+            painter.setBrush(QBrush(QColor(230, 230, 230)))
+            
+        painter.drawEllipse(QRect(1, 1, 30, 30))
+        
+        # Oklar için kalem ayarla
+        if self.is_dark_theme:
+            painter.setPen(QPen(QColor(220, 220, 220), 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        else:
+            painter.setPen(QPen(QColor(60, 60, 60), 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        
+        # Yukarı ok
+        painter.drawLine(16, 5, 16, 13)
+        painter.drawLine(16, 5, 12, 9)
+        painter.drawLine(16, 5, 20, 9)
+        
+        # Sağ ok
+        painter.drawLine(19, 16, 27, 16)
+        painter.drawLine(27, 16, 23, 12)
+        painter.drawLine(27, 16, 23, 20)
+        
+        # Aşağı ok
+        painter.drawLine(16, 19, 16, 27)
+        painter.drawLine(16, 27, 12, 23)
+        painter.drawLine(16, 27, 20, 23)
+        
+        # Sol ok
+        painter.drawLine(5, 16, 13, 16)
+        painter.drawLine(5, 16, 9, 12)
+        painter.drawLine(5, 16, 9, 20)
         
         painter.end()
         return QIcon(pixmap)
@@ -904,9 +962,14 @@ class MenuSidebar(Sidebar):
                 themed_icon = IconThemeManager.get_themed_icon(icon_path, is_dark_theme=is_dark)
                 self.theme_button.setIcon(themed_icon)
         
+        # Servo kontrol ikonunu güncelle
+        controls_icon = self.create_controls_icon()
+        self.servo_control_button.setIcon(controls_icon)
+        self.button_icons[self.servo_control_button] = controls_icon
+        
         # Update all button icons and text spacing
         for button in self.buttons:
-            if button == self.theme_button:  # Already handled above
+            if button == self.theme_button or button == self.servo_control_button:  # Already handled above
                 continue
                 
             icon_path_or_icon = self.button_icons.get(button)
@@ -993,7 +1056,7 @@ class MenuSidebar(Sidebar):
                         }
                     """)
             elif button in [self.theme_button, self.settings_button, self.exit_button,
-                           self.capture_button, self.save_button, self.tracking_button]:
+                           self.save_button, self.servo_control_button, self.tracking_button]:
                 # Top and bottom icon buttons style
                 if is_dark:
                     button.setStyleSheet("""

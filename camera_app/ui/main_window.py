@@ -93,7 +93,6 @@ class MainWindow(QMainWindow):
         
         # Connect menu button signals
         self.menu_sidebar.settings_button.clicked.connect(self.on_settings_clicked)
-        self.menu_sidebar.capture_button.clicked.connect(self.on_capture_clicked)
         self.menu_sidebar.save_button.clicked.connect(self.on_save_clicked)
         self.menu_sidebar.balloon_dl_button.clicked.connect(self.on_balloon_dl_clicked)
         self.menu_sidebar.balloon_edge_button.clicked.connect(self.on_balloon_edge_clicked)
@@ -108,6 +107,7 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.exit_button.clicked.connect(self.on_exit_clicked)
         self.menu_sidebar.emergency_stop_button.clicked.connect(self.on_emergency_stop_clicked)
         self.menu_sidebar.tracking_button.clicked.connect(self.on_tracking_clicked)
+        self.menu_sidebar.servo_control_button.clicked.connect(self.on_servo_control_clicked)
         
         # Base directory for icons - use absolute path
         icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
@@ -508,8 +508,8 @@ class MainWindow(QMainWindow):
             self.camera_view.setText("Camera not available")
             return
             
-        # Daha yüksek FPS ile kamerayı başlat (60 FPS)
-        self.camera_service.start(fps=60)
+        # Daha yüksek FPS ile kamerayı başlat (30 FPS)
+        self.camera_service.start(fps=30)
     
     def on_camera_error(self, error_message):
         """Handle camera errors."""
@@ -631,42 +631,6 @@ class MainWindow(QMainWindow):
         
         # İletişim kutusunu göster
         settings_dialog.exec_()
-    
-    def on_capture_clicked(self):
-        """Handle Capture button click."""
-        # Ekran görüntüsü alma işlevi (varsa)
-        filename = None
-        if hasattr(self, 'camera_service'):
-            filename = self.camera_service.capture_image()
-        
-        # Sonuç iletişim kutusunu göster
-        capture_dialog = QMessageBox(self)
-        
-        if filename:
-            # Başarılı
-            capture_dialog.setWindowTitle("Görüntü Yakalama Başarılı")
-            capture_dialog.setIcon(QMessageBox.Information)
-            capture_dialog.setText("Görüntü başarıyla yakalandı!")
-            capture_dialog.setInformativeText(f"Şu isimle kaydedildi: {filename}")
-            
-            # Log
-            self.logger.info(f"Görüntü yakalandı ve {filename} olarak kaydedildi")
-        else:
-            # Başarısız
-            capture_dialog.setWindowTitle("Görüntü Yakalama Başarısız")
-            capture_dialog.setIcon(QMessageBox.Warning)
-            capture_dialog.setText("Görüntü yakalanırken hata oluştu.")
-            capture_dialog.setInformativeText("Lütfen kameranın düzgün çalıştığını kontrol edin.")
-            
-            # Log
-            self.logger.warning("Görüntü yakalama başarısız oldu")
-        
-        # Butonlar
-        capture_dialog.setStandardButtons(QMessageBox.Ok)
-        capture_dialog.button(QMessageBox.Ok).setText("Tamam")
-        
-        # İletişim kutusunu göster
-        capture_dialog.exec_()
     
     def on_save_clicked(self):
         """Handle save button click."""
@@ -1351,3 +1315,14 @@ class MainWindow(QMainWindow):
             self.camera_view.set_detection_active(False)
             if hasattr(self, 'balloon_color_service') and self.balloon_color_service:
                 self.balloon_color_service.stop()
+
+    def on_servo_control_clicked(self):
+        """Open the manual servo control dialog."""
+        from ui.servo_control_dialog import ServoControlDialog
+        
+        # Log the action
+        self.logger.info("Manuel servo kontrolü başlatılıyor")
+        
+        # Create and show the dialog
+        dialog = ServoControlDialog(self)
+        dialog.exec_()
