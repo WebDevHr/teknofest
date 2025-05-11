@@ -24,19 +24,24 @@ class PanTiltService(QObject):
     Implements Image-Based Visual Servoing (IBVS) approach.
     
     Pin and axis assignments based on physical setup:
-    - Pan servo on A1 (controls vertical movement)
-    - Tilt servo on A0 (controls horizontal movement)
+    - Pan servo on A0 (controls vertical movement)
+    - Tilt servo on A1 (controls horizontal movement)
     
-    Movement directions:
-    - Pan: When object is below center, servo moves down
-    - Pan: When object is above center, servo moves up
-    - Tilt: When object is right of center, servo moves right
-    - Tilt: When object is left of center, servo moves left
+    Movement directions (matching servo_control_dialog.py):
+    - Up key: Pan increases (camera moves up)
+    - Down key: Pan decreases (camera moves down)
+    - Left key: Tilt decreases (camera moves left)
+    - Right key: Tilt increases (camera moves right)
+    
+    Angle ranges:
+    - Pan: 0 (looking down) to 180 (looking up)
+    - Tilt: 0 (looking left) to 180 (looking right)
     """
     
     # Signals
     command_sent = pyqtSignal(str)  # Signal emitted when a command is sent
     tracking_update = pyqtSignal(int, int, int, int)  # target_x, target_y, pan, tilt
+    connection_status_changed = pyqtSignal(bool)  # Signal emitted when connection status changes
     
     def __init__(self):
         super().__init__()
@@ -105,26 +110,50 @@ class PanTiltService(QObject):
     def connect(self):
         """Connect to the Arduino."""
         if self.is_connected:
-            self.logger.info("Already connected to Arduino")
+            self.logger.info("Arduino bağlantısı zaten kurulmuş")
             return True
             
         try:
+            # Log connection attempt
+            self.logger.info(f"Arduino bağlantısı kuruluyor: {self.serial_port} ({self.baud_rate} baud)...")
+            
             # Try to connect to Arduino
             self.serial_conn = serial.Serial(self.serial_port, self.baud_rate, timeout=1)
             
-            # Give Arduino time to initialize
-            time.sleep(2)
+            # Give Arduino time to initialize - more time needed for stable connection
+            self.logger.info("Arduino bağlantısı başlatılıyor, lütfen bekleyin...")
+            time.sleep(2.5)
+            
+            # Set connected flag now that we have a valid connection
+            self.is_connected = True
+            self.logger.info(f"Arduino bağlantısı başarılı: {self.serial_port}")
+            
+            # Emit connection status signal
+            self.connection_status_changed.emit(True)
             
             # Send initial position to center the servos
-            self.move_to(90, 90)
+            center_result = self.move_to(90, 90)
+            if not center_result:
+                self.logger.warning("Servolar merkez pozisyona getirilemedi, ancak bağlantı kuruldu")
             
-            self.is_connected = True
-            self.logger.info(f"Connected to Arduino on {self.serial_port}")
             return True
             
+        except serial.SerialException as e:
+            self.is_connected = False
+            if "could not open port" in str(e):
+                self.logger.error(f"Arduino bağlantısı kurulamadı: {self.serial_port} portu bulunamadı veya kullanılamıyor")
+            else:
+                self.logger.error(f"Arduino bağlantısı kurulamadı: {str(e)}")
+            
+            # Emit connection status signal
+            self.connection_status_changed.emit(False)
+            return False
         except Exception as e:
             self.is_connected = False
-            self.logger.error(f"Failed to connect to Arduino: {str(e)}")
+            self.logger.error(f"Arduino bağlantısında beklenmeyen hata: {str(e)}")
+            
+            # Emit connection status signal
+            self.connection_status_changed.emit(False)
             return False
     
     def disconnect(self):
@@ -143,6 +172,9 @@ class PanTiltService(QObject):
                 self.serial_conn = None
                 self.is_connected = False
                 self.logger.info("Disconnected from Arduino")
+                
+                # Emit connection status signal
+                self.connection_status_changed.emit(False)
                 return True
         except Exception as e:
             self.logger.error(f"Error disconnecting from Arduino: {str(e)}")
@@ -151,7 +183,7 @@ class PanTiltService(QObject):
     def send_command(self, command_str):
         """Send a command to the Arduino."""
         if not self.is_connected or not self.serial_conn:
-            self.logger.warning("Cannot send command: Not connected to Arduino")
+            self.logger.warning(f"Komut gönderilemedi: Arduino bağlantısı yok ({command_str})")
             return False
             
         try:
@@ -165,15 +197,13 @@ class PanTiltService(QObject):
             # Emit signal
             self.command_sent.emit(command_str)
             
-            self.logger.info(f"Sent command: {command_str.strip()}")
-            
             # Wait for command to be processed
-            time.sleep(0.05)
+            time.sleep(0.002)
             
             return True
             
         except Exception as e:
-            self.logger.error(f"Error sending command to Arduino: {str(e)}")
+            self.logger.error(f"Arduino'ya komut gönderilirken hata: {str(e)}")
             return False
     
     def move_to(self, pan, tilt):
@@ -183,7 +213,7 @@ class PanTiltService(QObject):
         tilt = max(self.tilt_min, min(self.tilt_max, tilt))
         
         # Limit maximum movement per step to reduce jerkiness
-        max_step = 2.0  # Maximum degrees to move in a single step
+        max_step = 0.1  # Maximum degrees to move in a single step
         
         if abs(pan - self.pan_angle) > max_step:
             # Limit pan movement
@@ -199,20 +229,16 @@ class PanTiltService(QObject):
             else:
                 tilt = self.tilt_angle - max_step
         
-        # Round to nearest integer to avoid tiny movements
-        pan = round(pan)
-        tilt = round(tilt)
-        
-        # Skip if no actual change
-        if pan == self.pan_angle and tilt == self.tilt_angle:
+        # Skip if no actual change (with small threshold for floating point comparison)
+        if abs(pan - self.pan_angle) < 0.01 and abs(tilt - self.tilt_angle) < 0.01:
             return True
             
         # Update current angles
         self.pan_angle = pan
         self.tilt_angle = tilt
         
-        # Send command to Arduino: format "P{pan}T{tilt}"
-        command = f"P{int(pan)}T{int(tilt)}"
+        # Send command to Arduino: format "P{pan}T{tilt}" with 1 decimal precision
+        command = f"P{pan:.1f}T{tilt:.1f}"
         return self.send_command(command)
     
     def move_by(self, pan_delta, tilt_delta):
@@ -309,12 +335,12 @@ class PanTiltService(QObject):
             v = -self.gain * L_pinv.dot(e)
             
             # Extract pan and tilt velocity components
-            # v[0] is x component (corresponds to tilt)
-            # v[1] is y component (corresponds to pan)
-            # v[2] is z component (depth, not used directly)
+            # Based on servo_control_dialog.py mapping:
+            # v[1] corresponds to pan (vertical movement, y-axis in image)
+            # v[0] corresponds to tilt (horizontal movement, x-axis in image)
             
             # Scale to appropriate control signals for the servos
-            pan_adjustment = v[1] * 25.0  # Vertical axis (pan)
+            pan_adjustment = -v[1] * 25.0  # Vertical axis (pan) - negative because camera y-axis is inverted
             tilt_adjustment = v[0] * 20.0  # Horizontal axis (tilt)
             
             # Apply smoothing factor
@@ -324,7 +350,11 @@ class PanTiltService(QObject):
             # Fallback to simplified control if matrix inversion fails
             self.logger.warning("Matrix inversion failed in IBVS control, using fallback")
             
-            # CORRECTED AXIS ASSIGNMENT BASED ON OBSERVATIONS:
+            # Directly mapping error to controls based on servo_control_dialog.py:
+            # - Object above center (negative error_y) -> pan increases (positive pan_adjustment)
+            # - Object below center (positive error_y) -> pan decreases (negative pan_adjustment)
+            # - Object right of center (positive error_x) -> tilt increases (positive tilt_adjustment)
+            # - Object left of center (negative error_x) -> tilt decreases (negative tilt_adjustment)
             pan_adjustment = -error_y * self.gain / self.center_y * 25
             tilt_adjustment = error_x * self.gain / self.center_x * 20
             

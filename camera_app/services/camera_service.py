@@ -25,10 +25,12 @@ class CameraService(QObject):
     frame_ready = pyqtSignal(QImage)
     camera_error = pyqtSignal(str)
     
-    def __init__(self, camera_id=0):
+    def __init__(self, camera_id=None):
         super().__init__()
         self.logger = LoggerService()
-        self.camera_id = camera_id
+        
+        # Use camera_id from config if not specified
+        self.camera_id = camera_id if camera_id is not None else config.camera_id
         self.capture = None
         self.timer = None
         self.is_running = False
@@ -46,30 +48,75 @@ class CameraService(QObject):
         
     def initialize(self):
         """Initialize the camera."""
-        self.capture = cv2.VideoCapture(self.camera_id)
-        
-        if not self.capture.isOpened():
-            error_msg = f"Kamera ID {self.camera_id} başlatılamadı"
+        try:
+            self.capture = cv2.VideoCapture(self.camera_id)
+            
+            if not self.capture.isOpened():
+                error_msg = f"Kamera ID {self.camera_id} başlatılamadı"
+                self.logger.error(error_msg)
+                self.camera_error.emit(error_msg)
+                return False
+            
+            self.logger.info(f"Kamera başarıyla başlatıldı (ID: {self.camera_id})")
+            
+            # Set initial resolution from config if available
+            if hasattr(config, 'camera_width') and hasattr(config, 'camera_height'):
+                self.set_resolution(config.camera_width, config.camera_height)
+            
+            return True
+        except Exception as e:
+            error_msg = f"Kamera başlatılırken hata: {str(e)}"
             self.logger.error(error_msg)
             self.camera_error.emit(error_msg)
             return False
-        
-        self.logger.info(f"Kamera başarıyla başlatıldı (ID: {self.camera_id})")
-        return True
     
-    def start(self, fps=60):
+    def set_resolution(self, width, height):
+        """Set camera resolution."""
+        if not self.capture or not self.capture.isOpened():
+            return False
+        
+        try:
+            # Try to set resolution
+            self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            
+            # Read actual values (may differ from requested)
+            actual_width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            self.logger.info(f"Kamera çözünürlüğü ayarlandı: İstenen={width}x{height}, Gerçek={actual_width}x{actual_height}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Çözünürlük ayarlanırken hata: {str(e)}")
+            return False
+    
+    def start(self, fps=None):
         """Start capturing frames at the specified FPS."""
         if not self.capture or not self.capture.isOpened():
             if not self.initialize():
                 return False
         
-        # Yüksek FPS performansı için kamerayı optimize et
-        # Çözünürlüğü ayarla (daha düşük çözünürlük daha yüksek FPS sağlayabilir)
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Use FPS from config if not specified
+        if fps is None:
+            fps = config.camera_fps
         
-        # OpenCV backend'i için FPS ayarını zorla (bazı kameralarda işe yarayabilir)
+        # Set resolution from config if available
+        if hasattr(config, 'camera_width') and hasattr(config, 'camera_height'):
+            self.set_resolution(config.camera_width, config.camera_height)
+        else:
+            # Use default resolution if not specified in config
+            self.set_resolution(640, 480)
+        
+        # Set FPS
         self.capture.set(cv2.CAP_PROP_FPS, fps)
+        
+        # Set additional camera properties if available
+        if hasattr(config, 'auto_exposure'):
+            auto_exposure_value = 3 if config.auto_exposure else 1  # 3=auto, 1=manual
+            self.capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, auto_exposure_value)
+            
+        if hasattr(config, 'auto_white_balance'):
+            self.capture.set(cv2.CAP_PROP_AUTO_WB, 1 if config.auto_white_balance else 0)
         
         # Create and start timer
         self.timer = QTimer()
@@ -78,6 +125,7 @@ class CameraService(QObject):
         self.timer.start(interval)
         
         self.is_running = True
+        self.logger.info(f"Kamera başlatıldı (FPS: {fps})")
         return True
     
     def stop(self):
@@ -98,26 +146,22 @@ class CameraService(QObject):
             self.logger.info("Kamera kaynakları serbest bırakıldı")
     
     def _calculate_fps(self):
-        """Calculate the current FPS."""
+        """Calculate FPS."""
         self.curr_frame_time = time.time()
         
-        # Calculate FPS only if we have a previous frame time
+        # Add current frame time difference to the list
         if self.prev_frame_time > 0:
-            # Calculate time difference between current and previous frame
             time_diff = self.curr_frame_time - self.prev_frame_time
+            self.frame_times.append(time_diff)
             
-            # Geçerli süreyi frame_times listesine ekle (son max_frame_samples kareyi takip et)
-            if time_diff > 0:  # Sıfıra bölünmeyi önle
-                self.frame_times.append(time_diff)
-                # Listedeki öğe sayısını sınırla
-                if len(self.frame_times) > self.max_frame_samples:
-                    self.frame_times.pop(0)  # En eski kareyi çıkar
+            # Keep only the most recent samples
+            if len(self.frame_times) > self.max_frame_samples:
+                self.frame_times.pop(0)
                 
-                # Ortalama FPS hesapla (tüm frame_times öğeleri üzerinden)
-                avg_time = sum(self.frame_times) / len(self.frame_times)
-                self.fps = 1 / avg_time if avg_time > 0 else 0
+            # Calculate average FPS from samples
+            avg_time = sum(self.frame_times) / len(self.frame_times)
+            self.fps = 1.0 / avg_time if avg_time > 0 else 0
         
-        # Update previous frame time
         self.prev_frame_time = self.curr_frame_time
     
     def _draw_fps(self, frame):
@@ -202,11 +246,13 @@ class CameraService(QObject):
             tuple: (width, height) of the current frame, or default values if camera not available.
         """
         if not self.capture or not self.capture.isOpened():
+            # Return config values if available, otherwise default values
+            if hasattr(config, 'camera_width') and hasattr(config, 'camera_height'):
+                return (config.camera_width, config.camera_height)
             return (640, 480)  # Return default values if camera not available
             
         width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        print(f"Kamera boyutları: {width}x{height}")
         return (width, height)
     
     def capture_image(self):
@@ -261,6 +307,16 @@ class CameraService(QObject):
         # Capture frame
         ret, frame = self.capture.read()
         if ret:
+            # Check save format from config
+            if hasattr(config, 'save_format'):
+                ext = os.path.splitext(filename)[1].lower()
+                if config.save_format == "JPEG" and ext != ".jpg" and ext != ".jpeg":
+                    filename = os.path.splitext(filename)[0] + ".jpg"
+                elif config.save_format == "PNG" and ext != ".png":
+                    filename = os.path.splitext(filename)[0] + ".png"
+                elif config.save_format == "BMP" and ext != ".bmp":
+                    filename = os.path.splitext(filename)[0] + ".bmp"
+            
             # Save the image
             cv2.imwrite(filename, frame)
             self.logger.info(f"Mevcut kare {filename} olarak kaydedildi")
@@ -277,4 +333,22 @@ class CameraService(QObject):
         width, height = self.get_frame_dimensions()
         pan_tilt_service.set_frame_center(width, height)
         
-        self.logger.info(f"Pan-tilt service set in Camera Service") 
+        self.logger.info(f"Pan-tilt service set in Camera Service")
+    
+    def get_available_resolutions(self):
+        """Get a list of common resolutions that might be supported by the camera.
+        
+        Returns:
+            list: List of resolution strings in format "widthxheight"
+        """
+        # Common camera resolutions
+        resolutions = [
+            "320x240",
+            "640x480",
+            "800x600",
+            "1024x768",
+            "1280x720",
+            "1920x1080",
+            "2560x1440"
+        ]
+        return resolutions 

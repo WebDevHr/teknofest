@@ -9,10 +9,13 @@ Main window for the camera application.
 
 import sys
 import os
-from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QPushButton, QMessageBox, QLabel
-from PyQt5.QtCore import Qt, QTimer, QSize
+from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QPushButton, QMessageBox, QLabel, QDialog, QVBoxLayout
+from PyQt5.QtCore import Qt, QTimer, QSize, QMetaObject, Q_ARG
 from PyQt5.QtGui import QFont, QIcon, QColor
 from datetime import datetime
+from PyQt5.QtWidgets import QApplication
+import threading
+import time
 
 from services.logger_service import LoggerService
 from services.camera_service import CameraService
@@ -25,6 +28,7 @@ from services.pan_tilt_service import PanTiltService
 from ui.sidebar import LogSidebar, MenuSidebar, IconThemeManager
 from ui.camera_view import CameraView
 from ui.shape_dialog import ShapeDetectionDialog
+from ui.system_status_panel import SystemStatusPanel
 from utils.config import config
 
 class MainWindow(QMainWindow):
@@ -48,6 +52,9 @@ class MainWindow(QMainWindow):
         # Initialize camera service
         self.init_camera()
         
+        # Initialize PanTilt service and try to connect automatically
+        self.init_pan_tilt_service()
+        
         # Show the window in full screen mode instead of maximized
         self.showFullScreen()
         
@@ -59,6 +66,11 @@ class MainWindow(QMainWindow):
         
         # Show initial log messages in the sidebar
         self.load_existing_logs()
+        
+        # Auto-connect to Arduino in background thread to avoid blocking UI
+        self.auto_connect_thread = threading.Thread(target=self._auto_connect_arduino)
+        self.auto_connect_thread.daemon = True
+        self.auto_connect_thread.start()
         
     def init_ui(self):
         """Initialize the user interface components."""
@@ -80,6 +92,18 @@ class MainWindow(QMainWindow):
         # Create left sidebar (Log Window) - start with 0 width
         self.log_sidebar = LogSidebar(self)
         self.log_sidebar.setFixedWidth(0)  # Start with zero width
+        
+        # Create system status panel above log sidebar
+        self.system_status_panel = SystemStatusPanel(self)
+        self.system_status_panel.setVisible(False)  # Hide initially until sidebar is opened
+        
+        # Create left side container for log sidebar and status panel
+        self.left_container = QWidget()
+        left_layout = QVBoxLayout(self.left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+        left_layout.addWidget(self.system_status_panel)
+        left_layout.addWidget(self.log_sidebar, 1)  # Give log sidebar stretch factor
         
         # Connect logger signals to log sidebar
         self.logger.log_added.connect(self.log_sidebar.add_log)
@@ -140,7 +164,7 @@ class MainWindow(QMainWindow):
         self.fullscreen_toggle_btn.setToolTip("Tam Ekran Değiştir")
         
         # Add widgets to main layout with proper stretch factors
-        self.main_layout.addWidget(self.log_sidebar, 0)  # No stretch
+        self.main_layout.addWidget(self.left_container, 0)  # No stretch
         self.main_layout.addWidget(self.camera_view, 1)  # Stretch to fill available space
         self.main_layout.addWidget(self.menu_sidebar, 0)  # No stretch
         
@@ -276,6 +300,10 @@ class MainWindow(QMainWindow):
             self.menu_sidebar.update_theme(is_dark=True)
         else:
             self.menu_sidebar.theme_button.setText("Açık Tema")
+            
+        # Update system status panel theme
+        if hasattr(self.system_status_panel, 'update_theme'):
+            self.system_status_panel.update_theme(is_dark=True)
         
         # Base directory for icons - use absolute path
         icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
@@ -403,6 +431,10 @@ class MainWindow(QMainWindow):
             self.menu_sidebar.update_theme(is_dark=False)
         else:
             self.menu_sidebar.theme_button.setText("Koyu Tema")
+            
+        # Update system status panel theme
+        if hasattr(self.system_status_panel, 'update_theme'):
+            self.system_status_panel.update_theme(is_dark=False)
         
         # Base directory for icons - use absolute path
         icon_base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "icons")
@@ -494,6 +526,7 @@ class MainWindow(QMainWindow):
     
     def init_camera(self):
         """Initialize the camera service."""
+        # Use camera_id from config
         self.camera_service = CameraService()
         
         # Connect camera signals
@@ -503,10 +536,19 @@ class MainWindow(QMainWindow):
         # Initialize and start camera
         if not self.camera_service.initialize():
             self.camera_view.setText("Camera not available")
+            # Update status indicator
+            self.system_status_panel.updateCameraStatus(False)
             return
             
-        # Daha yüksek FPS ile kamerayı başlat (30 FPS)
-        self.camera_service.start(fps=30)
+        # Start camera with FPS from config
+        self.camera_service.start()
+        
+        # Update status indicator
+        self.system_status_panel.updateCameraStatus(True)
+        
+        # Log camera info
+        width, height = self.camera_service.get_frame_dimensions()
+        self.logger.info(f"Kamera başlatıldı: {width}x{height}, {config.camera_fps} FPS")
     
     def on_camera_error(self, error_message):
         """Handle camera errors."""
@@ -516,6 +558,9 @@ class MainWindow(QMainWindow):
     def toggle_left_sidebar(self):
         """Toggle the visibility of the left sidebar."""
         is_open = self.log_sidebar.toggle()
+        
+        # Update system status panel visibility based on sidebar state
+        self.system_status_panel.setVisible(is_open)
         
         # Update button tooltip and icon based on current state
         if is_open:
@@ -535,6 +580,36 @@ class MainWindow(QMainWindow):
         if is_open:
             # Refresh logs in sidebar for better visibility
             self.refresh_log_sidebar()
+            
+            # Update all status indicators to current state
+            self.update_system_status()
+            
+    def update_system_status(self):
+        """Update all system status indicators to current state."""
+        # Camera status
+        camera_connected = hasattr(self, 'camera_service') and self.camera_service.is_running
+        self.system_status_panel.updateCameraStatus(camera_connected)
+        
+        # Arduino status
+        arduino_connected = hasattr(self, 'pan_tilt_service') and self.pan_tilt_service.is_connected
+        self.system_status_panel.updateArduinoStatus(arduino_connected)
+        
+        # Weapon status - Always set to false as it's not implemented yet
+        self.system_status_panel.updateWeaponStatus(False)
+        
+        # Legacy status updates - kept for backward compatibility
+        detector_active = hasattr(self, 'balloon_detector') and hasattr(self.balloon_detector, 'is_running') and self.balloon_detector.is_running
+        if not detector_active:
+            # Check other detectors
+            for detector_attr in ['friend_foe_detector', 'engagement_detector', 'engagement_board_detector', 'balloon_edge_service', 'balloon_color_service']:
+                if hasattr(self, detector_attr) and hasattr(getattr(self, detector_attr), 'is_running') and getattr(self, detector_attr).is_running:
+                    detector_active = True
+                    break
+        self.system_status_panel.updateDetectorStatus(detector_active)
+        
+        # Tracking status
+        tracking_active = hasattr(self, 'pan_tilt_service') and hasattr(self.pan_tilt_service, 'is_tracking') and self.pan_tilt_service.is_tracking
+        self.system_status_panel.updateTrackingStatus(tracking_active)
     
     def refresh_log_sidebar(self):
         """Refresh the log sidebar with all logs."""
@@ -604,30 +679,25 @@ class MainWindow(QMainWindow):
     
     def on_settings_clicked(self):
         """Handle Settings button click."""
-        # Ayarlar iletişim kutusunu göster
-        settings_dialog = QMessageBox(self)
-        settings_dialog.setWindowTitle("Ayarlar")
-        settings_dialog.setIcon(QMessageBox.Information)
-        settings_dialog.setText("Kamera Ayarları")
-        
-        # Ayarlar bilgisi
-        settings_info = (
-            "Kamera Çözünürlüğü: 1280x720\n"
-            "FPS Limiti: 30\n"
-            "Kayıt Formatı: JPEG\n"
-            "Log Seviyesi: BİLGİ\n"
-        )
-        settings_dialog.setInformativeText(settings_info)
-        
-        # Butonlar
-        settings_dialog.setStandardButtons(QMessageBox.Ok)
-        settings_dialog.button(QMessageBox.Ok).setText("Kapat")
-        
-        # Log
-        self.logger.info("Ayarlar iletişim kutusu görüntülendi")
-        
-        # İletişim kutusunu göster
-        settings_dialog.exec_()
+        try:
+            # Import SettingsDialog
+            from ui.settings_dialog import SettingsDialog
+            
+            # Create and show settings dialog
+            settings_dialog = SettingsDialog(self)
+            
+            # Log
+            self.logger.info("Ayarlar iletişim kutusu görüntülendi")
+            
+            # Show dialog and wait for user response
+            result = settings_dialog.exec_()
+            
+            # If settings were applied successfully
+            if result == QDialog.Accepted:
+                self.logger.info("Ayarlar güncellendi ve uygulandı")
+        except Exception as e:
+            self.logger.error(f"Ayarlar diyaloğu açılırken hata: {str(e)}")
+            QMessageBox.critical(self, "Hata", f"Ayarlar diyaloğu açılırken hata oluştu: {str(e)}")
     
     def on_save_clicked(self):
         """Handle save button click."""
@@ -820,6 +890,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'mock_detector') and self.mock_detector:
             self.mock_detector.stop()
             self.logger.info("Mock dedektör servisi durduruldu")
+            
+        # Update detector status indicator
+        self.system_status_panel.updateDetectorStatus(False)
 
     def on_balloon_dl_clicked(self):
         """Handle balloon detection with deep learning button click."""
@@ -840,11 +913,17 @@ class MainWindow(QMainWindow):
             self.init_yolo()  # Initialize balloon detector with fresh instance
             self.camera_view.set_detection_active(True)
             self.camera_view.set_detection_mode("balloon")
+            
+            # Update detector status indicator
+            self.system_status_panel.updateDetectorStatus(True)
         else:
             self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
             # Stop services
             self._stop_all_detection_services()
+            
+            # Update detector status indicator
+            self.system_status_panel.updateDetectorStatus(False)
 
     def on_balloon_classic_clicked(self):
         """Handle balloon detection with classical methods button click."""
@@ -1000,7 +1079,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'balloon_detector') or not self.balloon_detector:
             # Create balloon detector service
             # Özel model dosyasını belirt
-            model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "bestv8m_100_640.pt")
+            model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "bests_balloon_30_dark.pt")
             self.balloon_detector = BalloonDetectorService(model_path=model_path)
             
             # Connect to camera service
@@ -1016,7 +1095,7 @@ class MainWindow(QMainWindow):
             self.balloon_detector.use_kalman = True
             self.balloon_detector.show_kalman_debug = True
             
-            self.logger.info(f"Balon dedektör servisi ve Kalman filtresi başlatıldı (Model: bestv8m_100_640.pt)")
+            self.logger.info(f"Balon dedektör servisi ve Kalman filtresi başlatıldı (Model: bests_balloon_30_dark.pt)")
             
         # Start service
         self.balloon_detector.start()
@@ -1128,21 +1207,24 @@ class MainWindow(QMainWindow):
         is_active = self.menu_sidebar.tracking_button.isChecked()
         
         if is_active:
-            # Connect to Arduino
+            # Initialize pan-tilt service if needed
             if not hasattr(self, 'pan_tilt_service') or not self.pan_tilt_service:
                 self.init_pan_tilt_service()
                 
-            # Connect to Arduino
-            success = self.pan_tilt_service.connect()
-            if not success:
-                # If connection failed, uncheck the button
+            # Make sure balloon detection is active
+            if not hasattr(self, 'balloon_detector') or not self.balloon_detector:
+                # No balloon detector active, show error and uncheck button
                 self.menu_sidebar.tracking_button.setChecked(False)
-                QMessageBox.critical(self, "Bağlantı Hatası", 
-                                   "Pan-Tilt servoları ile bağlantı kurulamadı. Bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
+                QMessageBox.warning(self, "Takip Hatası", 
+                                  "Takip için balon dedektörü aktif değil. Önce 'Hareketli Balon Modu (Derin Öğrenmeli)' modunu etkinleştirin.")
+                # Update status indicators
+                self.system_status_panel.updateTrackingStatus(False)
                 return
-                
-            # Connect the pan_tilt service to the balloon detector if available
-            if hasattr(self, 'balloon_detector') and self.balloon_detector:
+            
+            # Eğer zaten bağlıysa tekrar bağlanmaya çalışma
+            if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service.is_connected:
+                self.logger.info("Arduino zaten bağlı, takip başlatılıyor")
+                # Connect the pan_tilt service to the balloon detector
                 self.pan_tilt_service.set_balloon_detector(self.balloon_detector)
                 
                 # Update frame dimensions
@@ -1154,27 +1236,129 @@ class MainWindow(QMainWindow):
                 self.pan_tilt_service.start_tracking()
                 self.logger.info("Balon takibi başlatıldı")
                 
-            else:
-                # No balloon detector available, show error
+                # Update status indicator
+                self.system_status_panel.updateTrackingStatus(True)
+                return
+                
+            # Show connection dialog
+            connecting_dialog = QMessageBox(self)
+            connecting_dialog.setWindowTitle("Arduino Bağlantısı")
+            connecting_dialog.setIcon(QMessageBox.Information)
+            connecting_dialog.setText(f"Arduino ile bağlantı kuruluyor: {config.pan_tilt_serial_port}")
+            connecting_dialog.setInformativeText("Lütfen bekleyin...")
+            connecting_dialog.setStandardButtons(QMessageBox.Cancel)
+            
+            # Show dialog without blocking (modeless)
+            connecting_dialog.show()
+            
+            # Update UI to process dialog
+            QApplication.processEvents()
+            
+            # Create a timer for timeout
+            connection_timer = QTimer()
+            connection_timeout = False
+            
+            def on_timeout():
+                nonlocal connection_timeout
+                connection_timeout = True
+                connecting_dialog.reject()
+            
+            # Set timeout to 5 seconds
+            connection_timer.setSingleShot(True)
+            connection_timer.timeout.connect(on_timeout)
+            connection_timer.start(5000)  # 5 seconds timeout
+                
+            # Connect to Arduino - use a background thread to avoid UI freezing
+            connection_thread = threading.Thread(target=self._connect_arduino)
+            connection_thread.daemon = True
+            connection_thread.start()
+            
+            # Wait for dialog to close (when user cancels or connection completes)
+            result = connecting_dialog.exec_()
+            
+            # Stop the timer
+            connection_timer.stop()
+            
+            # Wait for the connection thread to finish (with a short timeout)
+            connection_thread.join(0.5)
+            
+            # Check if connection successful
+            success = hasattr(self, 'pan_tilt_service') and self.pan_tilt_service.is_connected
+            
+            if not success:
+                # If connection failed, uncheck the button
                 self.menu_sidebar.tracking_button.setChecked(False)
-                QMessageBox.warning(self, "Takip Hatası", 
-                                   "Takip için balon dedektörü aktif değil. Önce 'Hareketli Balon Modu (Derin Öğrenmeli)' modunu etkinleştirin.")
+                
+                # Show appropriate error message
+                if connection_timeout:
+                    QMessageBox.critical(self, "Bağlantı Hatası", 
+                                      f"Arduino bağlantısı zaman aşımına uğradı: {config.pan_tilt_serial_port}\n\n"
+                                      "Bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.\n"
+                                      "Ayarlar menüsünden doğru COM portunu seçebilirsiniz.")
+                else:
+                    QMessageBox.critical(self, "Bağlantı Hatası", 
+                                      f"Pan-Tilt servoları ile bağlantı kurulamadı: {config.pan_tilt_serial_port}\n\n"
+                                      "Bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.\n"
+                                      "Ayarlar menüsünden doğru COM portunu seçebilirsiniz.")
+                return
+                
+            # Connect the pan_tilt service to the balloon detector
+            self.pan_tilt_service.set_balloon_detector(self.balloon_detector)
+            
+            # Update frame dimensions
+            if hasattr(self, 'camera_service') and self.camera_service:
+                width, height = self.camera_service.get_frame_dimensions()
+                self.pan_tilt_service.set_frame_center(width, height)
+            
+            # Start tracking
+            self.pan_tilt_service.start_tracking()
+            self.logger.info("Balon takibi başlatıldı")
         else:
             # Stop tracking
             if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service:
                 self.pan_tilt_service.stop_tracking()
                 self.logger.info("Balon takibi durduruldu")
+    
+    def _connect_arduino(self):
+        """Connection function to run in a background thread."""
+        try:
+            if hasattr(self, 'pan_tilt_service'):
+                self.pan_tilt_service.connect()
+        except Exception as e:
+            self.logger.error(f"Arduino bağlantı thread'inde hata: {str(e)}")
 
     def init_pan_tilt_service(self):
         """Initialize the PanTiltService."""
+        # Create new PanTiltService instance
         self.pan_tilt_service = PanTiltService()
+        
+        # Configure servo limits from config if needed
+        if hasattr(config, 'pan_min_angle'):
+            self.pan_tilt_service.pan_min = config.pan_min_angle
+        if hasattr(config, 'pan_max_angle'):
+            self.pan_tilt_service.pan_max = config.pan_max_angle
+        if hasattr(config, 'tilt_min_angle'):
+            self.pan_tilt_service.tilt_min = config.tilt_min_angle
+        if hasattr(config, 'tilt_max_angle'):
+            self.pan_tilt_service.tilt_max = config.tilt_max_angle
+            
+        # Configure center positions if available
+        if hasattr(config, 'pan_center') and hasattr(config, 'tilt_center'):
+            self.pan_tilt_service.pan_angle = config.pan_center
+            self.pan_tilt_service.tilt_angle = config.tilt_center
+            self.pan_tilt_service.target_pan = config.pan_center
+            self.pan_tilt_service.target_tilt = config.tilt_center
         
         # Connect the pan_tilt_service to the camera_service for visualization
         if hasattr(self, 'camera_service') and self.camera_service:
             self.camera_service.set_pan_tilt_service(self.pan_tilt_service)
+            
             # Update frame dimensions
             width, height = self.camera_service.get_frame_dimensions()
             self.pan_tilt_service.set_frame_center(width, height)
+        
+        # Connect signal for connection status changes
+        self.pan_tilt_service.connection_status_changed.connect(self.on_arduino_connection_changed)
             
         self.logger.info("PanTilt servisi başlatıldı (Gelişmiş IBVS ile)")
 
@@ -1323,3 +1507,35 @@ class MainWindow(QMainWindow):
         # Create and show the dialog
         dialog = ServoControlDialog(self)
         dialog.exec_()
+
+    def _auto_connect_arduino(self):
+        """Automatically connect to Arduino in background thread."""
+        # Give UI time to initialize properly
+        time.sleep(1)
+        
+        # Try to connect if not already connected
+        if hasattr(self, 'pan_tilt_service') and not self.pan_tilt_service.is_connected:
+            self.logger.info(f"Arduino otomatik bağlantı deneniyor: {config.pan_tilt_serial_port}")
+            success = self.pan_tilt_service.connect()
+            
+            if success:
+                self.logger.info("Arduino otomatik bağlantı başarılı")
+                # Update system status
+                QMetaObject.invokeMethod(self.system_status_panel, "updateArduinoStatus", 
+                                      Qt.QueuedConnection, Q_ARG(bool, True))
+            else:
+                self.logger.warning(f"Arduino otomatik bağlantı başarısız: {config.pan_tilt_serial_port}")
+                # Update system status
+                QMetaObject.invokeMethod(self.system_status_panel, "updateArduinoStatus", 
+                                      Qt.QueuedConnection, Q_ARG(bool, False))
+
+    def on_arduino_connection_changed(self, connected):
+        """Handle Arduino connection status changes."""
+        # Update status indicator
+        self.system_status_panel.updateArduinoStatus(connected)
+        
+        # Log the status change
+        if connected:
+            self.logger.info("Arduino bağlantısı kuruldu")
+        else:
+            self.logger.warning("Arduino bağlantısı kesildi")

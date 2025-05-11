@@ -8,6 +8,7 @@
  * Communication protocol via Serial:
  * - Command format: "P{pan}T{tilt}" where pan and tilt are angles (0-180)
  * - Example: "P90T45" sets pan to 90° and tilt to 45°
+ * - Values can be decimal (e.g., "P90.5T45.2") for fine-grained control
  * 
  * For Teknofest project, 2025
  */
@@ -18,27 +19,30 @@
 Servo panServo;   // Pan servo (horizontal movement)
 Servo tiltServo;  // Tilt servo (vertical movement)
 
-// Current positions
-int panAngle = 90;
-int tiltAngle = 90;
+// Current positions (using float for more precision)
+float panAngle = 90.0;
+float tiltAngle = 90.0;
 
 // Target positions (for smooth movement)
-int targetPanAngle = 90;
-int targetTiltAngle = 90;
+float targetPanAngle = 90.0;
+float targetTiltAngle = 90.0;
 
 // Servo limits
-const int PAN_MIN = 0;
-const int PAN_MAX = 180;
-const int TILT_MIN = 0;
-const int TILT_MAX = 180;
+const float PAN_MIN = 0.0;
+const float PAN_MAX = 180.0;
+const float TILT_MIN = 0.0;
+const float TILT_MAX = 180.0;
 
 // For parsing commands
 String inputBuffer = "";
 
 // For smooth movement
-const int MOVE_INTERVAL = 10;   // milliseconds between movements (daha hızlı güncellemeler)
-const float SMOOTH_FACTOR = 0.4; // Smoothing factor (0-1.0, daha yüksek = daha hızlı hareket)
+const int MOVE_INTERVAL = 5;     // milliseconds between movements (faster updates)
+const float SMOOTH_FACTOR = 0.3; // Smoothing factor (0-1.0, higher = faster movement)
 unsigned long lastMoveTime = 0;
+
+// Minimum servo step size (in degrees)
+const float MIN_STEP = 0.1;      // Allow micro-adjustments
 
 void setup() {
   // Initialize serial communication
@@ -67,7 +71,7 @@ void loop() {
   updateServos();
   
   // Small delay for stability
-  delay(5);
+  delay(2);
 }
 
 void readSerialCommands() {
@@ -103,9 +107,9 @@ void processCommand(String command) {
     // Extract tilt value (from T to the end)
     String tiltStr = command.substring(tIndex + 1);
     
-    // Convert to integers
-    int pan = panStr.toInt();
-    int tilt = tiltStr.toInt();
+    // Convert to float instead of int for more precision
+    float pan = panStr.toFloat();
+    float tilt = tiltStr.toFloat();
     
     // Constrain to valid ranges
     pan = constrain(pan, PAN_MIN, PAN_MAX);
@@ -115,11 +119,11 @@ void processCommand(String command) {
     targetPanAngle = pan;
     targetTiltAngle = tilt;
     
-    // Send confirmation
+    // Send confirmation with decimal precision
     Serial.print("OK: P=");
-    Serial.print(pan);
+    Serial.print(pan, 1);  // Show one decimal place
     Serial.print(", T=");
-    Serial.println(tilt);
+    Serial.println(tilt, 1);
   } 
   else {
     // Invalid command format
@@ -137,13 +141,13 @@ void updateServos() {
   lastMoveTime = currentTime;
   
   // Check if we need to move pan servo
-  if (panAngle != targetPanAngle) {
+  if (abs(panAngle - targetPanAngle) > MIN_STEP) {
     // Apply smoothing - move a percentage of the remaining distance
     float panDiff = targetPanAngle - panAngle;
-    int panStep = max(1, (int)(panDiff * SMOOTH_FACTOR)); 
+    float panStep = max(MIN_STEP, abs(panDiff * SMOOTH_FACTOR)); 
     
     // Move toward target position
-    if (abs(panDiff) <= abs(panStep)) {
+    if (abs(panDiff) <= panStep) {
       panAngle = targetPanAngle;  // We're close enough, go to exact position
     } else if (panDiff > 0) {
       panAngle += panStep;  // Move up
@@ -151,18 +155,18 @@ void updateServos() {
       panAngle -= panStep;  // Move down
     }
     
-    // Update servo
-    panServo.write(panAngle);
+    // Update servo with rounded value (servos only accept integers)
+    panServo.write(round(panAngle));
   }
   
   // Check if we need to move tilt servo
-  if (tiltAngle != targetTiltAngle) {
+  if (abs(tiltAngle - targetTiltAngle) > MIN_STEP) {
     // Apply smoothing - move a percentage of the remaining distance
     float tiltDiff = targetTiltAngle - tiltAngle;
-    int tiltStep = max(1, (int)(tiltDiff * SMOOTH_FACTOR));
+    float tiltStep = max(MIN_STEP, abs(tiltDiff * SMOOTH_FACTOR));
     
     // Move toward target position
-    if (abs(tiltDiff) <= abs(tiltStep)) {
+    if (abs(tiltDiff) <= tiltStep) {
       tiltAngle = targetTiltAngle;  // We're close enough, go to exact position
     } else if (tiltDiff > 0) {
       tiltAngle += tiltStep;  // Move right
@@ -170,7 +174,7 @@ void updateServos() {
       tiltAngle -= tiltStep;  // Move left
     }
     
-    // Update servo
-    tiltServo.write(tiltAngle);
+    // Update servo with rounded value (servos only accept integers)
+    tiltServo.write(round(tiltAngle));
   }
 } 

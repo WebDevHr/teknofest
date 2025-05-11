@@ -48,6 +48,13 @@ class Config:
         # Camera settings
         self.camera_id = int(os.getenv('CAMERA_ID', 0))
         self.camera_fps = int(os.getenv('CAMERA_FPS', 30))
+        self.camera_width = int(os.getenv('CAMERA_WIDTH', 640))
+        self.camera_height = int(os.getenv('CAMERA_HEIGHT', 480))
+        self.save_format = os.getenv('SAVE_FORMAT', 'JPEG')
+        
+        # Camera additional options
+        self.auto_exposure = os.getenv('AUTO_EXPOSURE', 'True').lower() in ('true', '1', 't')
+        self.auto_white_balance = os.getenv('AUTO_WHITE_BALANCE', 'True').lower() in ('true', '1', 't')
         
         # UI settings
         self.theme = "dark"
@@ -75,6 +82,16 @@ class Config:
         # Pan-Tilt servo bağlantı ayarları
         self.pan_tilt_serial_port = os.getenv('PAN_TILT_SERIAL_PORT', 'COM8')
         self.pan_tilt_baud_rate = int(os.getenv('PAN_TILT_BAUD_RATE', 115200))
+        
+        # Pan-Tilt servo merkez pozisyon ayarları
+        self.pan_center = int(os.getenv('PAN_CENTER', 90))
+        self.tilt_center = int(os.getenv('TILT_CENTER', 90))
+        
+        # Pan-Tilt servo açı sınırları
+        self.pan_min_angle = int(os.getenv('PAN_MIN_ANGLE', 0))
+        self.pan_max_angle = int(os.getenv('PAN_MAX_ANGLE', 180))
+        self.tilt_min_angle = int(os.getenv('TILT_MIN_ANGLE', 0))
+        self.tilt_max_angle = int(os.getenv('TILT_MAX_ANGLE', 180))
         
         # Diğer ayarlar
         self.use_gpu = os.getenv('USE_GPU', 'True').lower() in ('true', '1', 't')

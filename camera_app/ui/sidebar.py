@@ -425,17 +425,23 @@ class MenuSidebar(Sidebar):
         shadow.setOffset(1, 1)
         self.fps_label.setGraphicsEffect(shadow)
         
-        self.tracking_button = self.create_icon_button("", os.path.join(self.icon_base_dir, "target.png"), icon_only=True, checkable=True)
-        self.tracking_button.setToolTip("Balon Takibi")
+        # Tracking button özel ikon ile oluştur (target.png mevcut değil)
+        tracking_icon = self.create_tracking_icon()
+        self.tracking_button = self.create_icon_button("Takibi Başlat", tracking_icon, checkable=True)
+        self.tracking_button.setToolTip("Hedef Takibi Modu")
         
         # Create a horizontal layout for the bottom buttons
         self.bottom_buttons_layout = QHBoxLayout()
         self.bottom_buttons_layout.setContentsMargins(0, 0, 0, 0)
         self.bottom_buttons_layout.setSpacing(5)
+        self.bottom_buttons_layout.addWidget(self.fps_label)  # FPS göstergesi sola alındı
         self.bottom_buttons_layout.addWidget(self.servo_control_button)
-        self.bottom_buttons_layout.addWidget(self.save_button)
-        self.bottom_buttons_layout.addWidget(self.fps_label)
-        self.bottom_buttons_layout.addWidget(self.tracking_button)
+        self.bottom_buttons_layout.addWidget(self.save_button)  # Save butonu sona alındı
+        
+        # Tüm butonların eşit boyutlara sahip olduğundan emin ol
+        for button in [self.servo_control_button, self.save_button]:
+            button.setFixedSize(36, 36)
+            button.setIconSize(QSize(24, 24))
         
         # Create a widget to hold the bottom layout
         self.bottom_buttons_widget = QWidget()
@@ -450,11 +456,11 @@ class MenuSidebar(Sidebar):
         # Store buttons for theme updates
         self.buttons = [
             self.theme_button, self.settings_button, self.exit_button,
-            self.save_button, self.servo_control_button, self.tracking_button,
+            self.save_button, self.servo_control_button,
             self.balloon_dl_button, self.balloon_edge_button, self.balloon_color_button, self.balloon_classic_button,
             self.friend_foe_dl_button, self.friend_foe_classic_button,
             self.engagement_dl_button, self.engagement_hybrid_button,
-            self.engagement_board_button
+            self.engagement_board_button, self.tracking_button
         ]
         
         # Store icons paths and alternates for theme updates
@@ -465,7 +471,7 @@ class MenuSidebar(Sidebar):
             self.exit_button: os.path.join(self.icon_base_dir, "exit.png"),
             self.save_button: os.path.join(self.icon_base_dir, "save.png"),
             self.servo_control_button: controls_icon,
-            self.tracking_button: os.path.join(self.icon_base_dir, "target.png"),
+            self.tracking_button: tracking_icon,  # Özel oluşturulan ikonu kullan
             self.balloon_dl_button: balloon_icon,
             self.balloon_edge_button: balloon_icon,
             self.balloon_color_button: balloon_icon,
@@ -514,6 +520,12 @@ class MenuSidebar(Sidebar):
         
         # Sistem Kontrolleri
         self.add_widget(self.create_stage_title("Sistem Kontrolleri"))
+        
+        # Tracking butonu - tam genişlikte diğer toggle butonlar gibi
+        tracking_icon = self.create_tracking_icon()
+        self.tracking_button = self.create_icon_button("Balon Takibi", tracking_icon, checkable=True)
+        self.tracking_button.setToolTip("Balon Takibi Modu")
+        self.add_widget(self.tracking_button)
         
         # Create emergency stop button with warning icon
         self.emergency_stop_button = QPushButton("   ACİL STOP")  # Boşluklu metin ekle
@@ -715,6 +727,66 @@ class MenuSidebar(Sidebar):
         painter.drawLine(5, 16, 13, 16)
         painter.drawLine(5, 16, 9, 12)
         painter.drawLine(5, 16, 9, 20)
+        
+        painter.end()
+        return QIcon(pixmap)
+    
+    def create_tracking_icon(self):
+        """Balon takibi için hedef/crosshair ikonu oluştur."""
+        icon_size = QSize(24, 24)
+        pixmap = QPixmap(icon_size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # İkon merkezleme için referans noktası
+        center_x = 12
+        center_y = 12
+        
+        # Hedef için kalem ayarla
+        if self.is_dark_theme:
+            crosshair_color = QColor(220, 220, 220)  # Beyaz tona yakın
+        else:
+            crosshair_color = QColor(60, 60, 60)     # Siyah tona yakın
+        
+        # İç daire çiz (hedef) - merkeze göre konumlandırılmış
+        outer_radius = 7
+        crosshair_outer = QRect(center_x - outer_radius, center_y - outer_radius, 
+                               outer_radius * 2, outer_radius * 2)
+        painter.setPen(QPen(crosshair_color, 1.5))
+        painter.setBrush(Qt.transparent)
+        painter.drawEllipse(crosshair_outer)
+        
+        # İç merkez daire - merkeze göre konumlandırılmış
+        inner_radius = 2
+        crosshair_inner = QRect(center_x - inner_radius, center_y - inner_radius, 
+                                inner_radius * 2, inner_radius * 2)
+        painter.setBrush(crosshair_color)
+        painter.drawEllipse(crosshair_inner)
+        
+        # Artı işareti (nişan çizgileri)
+        painter.setPen(QPen(crosshair_color, 1.2))
+        
+        # Yatay çizgiler - merkeze göre konumlandırılmış
+        line_inner_gap = outer_radius + 1  # Dairenin biraz dışından başlat
+        line_outer_len = 4                 # Dış çizgi uzunluğu
+        
+        # Sol yatay çizgi
+        painter.drawLine(center_x - line_inner_gap - line_outer_len, center_y, 
+                         center_x - line_inner_gap, center_y)
+        
+        # Sağ yatay çizgi
+        painter.drawLine(center_x + line_inner_gap, center_y, 
+                         center_x + line_inner_gap + line_outer_len, center_y)
+        
+        # Üst dikey çizgi
+        painter.drawLine(center_x, center_y - line_inner_gap - line_outer_len, 
+                         center_x, center_y - line_inner_gap)
+        
+        # Alt dikey çizgi
+        painter.drawLine(center_x, center_y + line_inner_gap, 
+                         center_x, center_y + line_inner_gap + line_outer_len)
         
         painter.end()
         return QIcon(pixmap)
@@ -967,6 +1039,11 @@ class MenuSidebar(Sidebar):
         self.servo_control_button.setIcon(controls_icon)
         self.button_icons[self.servo_control_button] = controls_icon
         
+        # Tracking ikonunu güncelle
+        tracking_icon = self.create_tracking_icon()
+        self.tracking_button.setIcon(tracking_icon)
+        self.button_icons[self.tracking_button] = tracking_icon
+        
         # Update all button icons and text spacing
         for button in self.buttons:
             if button == self.theme_button or button == self.servo_control_button:  # Already handled above
@@ -979,7 +1056,10 @@ class MenuSidebar(Sidebar):
             # Özel ikonlar için QIcon nesnelerini doğrudan kullan
             if isinstance(icon_path_or_icon, QIcon):
                 button.setIcon(icon_path_or_icon)
-                button.setIconSize(QSize(28, 28))
+                if button in [self.servo_control_button, self.save_button]:
+                    button.setIconSize(QSize(24, 24))  # Bottom buttons için daha küçük
+                else:
+                    button.setIconSize(QSize(28, 28))  # Diğer butonlar için orijinal boyut
             elif isinstance(icon_path_or_icon, dict):  # If it has different icons for dark/light
                 icon_path = icon_path_or_icon.get("dark" if is_dark else "light", "")
                 
@@ -990,7 +1070,10 @@ class MenuSidebar(Sidebar):
             elif os.path.exists(icon_path_or_icon):
                 themed_icon = IconThemeManager.get_themed_icon(icon_path_or_icon, is_dark_theme=is_dark)
                 button.setIcon(themed_icon)
-                button.setIconSize(QSize(28, 28))
+                if button in [self.servo_control_button, self.save_button]:
+                    button.setIconSize(QSize(24, 24))
+                else:
+                    button.setIconSize(QSize(28, 28))
             
             # İkon ve metin arasındaki boşluğu güncelle
             text = button.text().strip()
@@ -1056,7 +1139,7 @@ class MenuSidebar(Sidebar):
                         }
                     """)
             elif button in [self.theme_button, self.settings_button, self.exit_button,
-                           self.save_button, self.servo_control_button, self.tracking_button]:
+                           self.save_button, self.servo_control_button]:
                 # Top and bottom icon buttons style
                 if is_dark:
                     button.setStyleSheet("""
@@ -1131,4 +1214,20 @@ class MenuSidebar(Sidebar):
             QPushButton:pressed {
                 background-color: #AA0000;
             }
-        """) 
+        """)
+        
+        # Tüm butonlar için özel temalamayı uygula (tracking butonu için de)
+        self.update_all_button_icons()
+        
+        # Tema değişikliğinde ikonlar da güncellenmeli
+        
+    def update_all_button_icons(self):
+        """Tüm butonların ikonlarını temalara göre günceller"""
+        # Bottom buttons için icon boyutunu ayarla
+        for button in [self.servo_control_button, self.save_button]:
+            button.setFixedSize(36, 36)
+            button.setIconSize(QSize(24, 24))
+            
+        # Tracking buton ikonunu güncelle
+        tracking_icon = self.create_tracking_icon()
+        self.tracking_button.setIcon(tracking_icon) 
