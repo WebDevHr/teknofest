@@ -24,8 +24,12 @@ class ServoControlDialog(QDialog):
         self.repeat_timer.timeout.connect(self.process_active_keys)
         self.repeat_timer.setInterval(30)  # Repeat every 30ms
         
-        # Parent window for accessing pan_tilt_service
+        # Parent window for accessing theme
         self.parent = parent
+        
+        # Get the singleton ServoControlService instance
+        from services.servo_control_service import ServoControlService
+        self.servo_service = ServoControlService.get_instance()
         
         # Set dialog properties
         self.setWindowTitle('Manuel Servo Kontrolü')
@@ -128,7 +132,7 @@ class ServoControlDialog(QDialog):
         keyboard_group.setLayout(keyboard_layout)
         
         # Status display
-        if self.parent and hasattr(self.parent, 'pan_tilt_service') and self.parent.pan_tilt_service.is_connected:
+        if self.servo_service.is_connected:
             self.status_label = QLabel("Arduino bağlantısı kullanılıyor")
             self.apply_status_label_style("success")
         else:
@@ -398,7 +402,7 @@ class ServoControlDialog(QDialog):
     
     def process_active_keys(self):
         """Process all active keys to move servos accordingly."""
-        if not self.parent or not hasattr(self.parent, 'pan_tilt_service'):
+        if not self.servo_service:
             self.status_label.setText("Arduino bağlantısı yok - servo kontrolü çalışmayacak")
             self.apply_status_label_style("error")
             return
@@ -420,9 +424,9 @@ class ServoControlDialog(QDialog):
         
         # Move servos if needed
         if pan_delta != 0 or tilt_delta != 0:
-            self.parent.pan_tilt_service.move_by(pan_delta, tilt_delta)
-            current_pan = self.parent.pan_tilt_service.pan_angle
-            current_tilt = self.parent.pan_tilt_service.tilt_angle
+            self.servo_service.move_by(pan_delta, tilt_delta)
+            current_pan = self.servo_service.pan_angle
+            current_tilt = self.servo_service.tilt_angle
             self.status_label.setText(f"Pan: {current_pan:.1f}°, Tilt: {current_tilt:.1f}°")
             self.apply_status_label_style("success")
     

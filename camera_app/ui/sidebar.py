@@ -430,6 +430,11 @@ class MenuSidebar(Sidebar):
         self.tracking_button = self.create_icon_button("Takibi Başlat", tracking_icon, checkable=True)
         self.tracking_button.setToolTip("Hedef Takibi Modu")
         
+        # PBVS Tracking butonu - tam genişlikte diğer toggle butonlar gibi
+        pbvs_icon = self.create_pbvs_icon()
+        self.pbvs_tracking_button = self.create_icon_button("PBVS Takip", pbvs_icon, checkable=True)
+        self.pbvs_tracking_button.setToolTip("Position-Based Visual Servoing Takip Modu")
+        
         # Create a horizontal layout for the bottom buttons
         self.bottom_buttons_layout = QHBoxLayout()
         self.bottom_buttons_layout.setContentsMargins(0, 0, 0, 0)
@@ -460,7 +465,7 @@ class MenuSidebar(Sidebar):
             self.balloon_dl_button, self.balloon_edge_button, self.balloon_color_button, self.balloon_classic_button,
             self.friend_foe_dl_button, self.friend_foe_classic_button,
             self.engagement_dl_button, self.engagement_hybrid_button,
-            self.engagement_board_button, self.tracking_button
+            self.engagement_board_button, self.tracking_button, self.pbvs_tracking_button
         ]
         
         # Store icons paths and alternates for theme updates
@@ -472,6 +477,7 @@ class MenuSidebar(Sidebar):
             self.save_button: os.path.join(self.icon_base_dir, "save.png"),
             self.servo_control_button: controls_icon,
             self.tracking_button: tracking_icon,  # Özel oluşturulan ikonu kullan
+            self.pbvs_tracking_button: pbvs_icon,
             self.balloon_dl_button: balloon_icon,
             self.balloon_edge_button: balloon_icon,
             self.balloon_color_button: balloon_icon,
@@ -526,6 +532,12 @@ class MenuSidebar(Sidebar):
         self.tracking_button = self.create_icon_button("Balon Takibi", tracking_icon, checkable=True)
         self.tracking_button.setToolTip("Balon Takibi Modu")
         self.add_widget(self.tracking_button)
+        
+        # PBVS Tracking butonu - tam genişlikte diğer toggle butonlar gibi
+        pbvs_icon = self.create_pbvs_icon()
+        self.pbvs_tracking_button = self.create_icon_button("PBVS Takip", pbvs_icon, checkable=True)
+        self.pbvs_tracking_button.setToolTip("Position-Based Visual Servoing Takip Modu")
+        self.add_widget(self.pbvs_tracking_button)
         
         # Create emergency stop button with warning icon
         self.emergency_stop_button = QPushButton("   ACİL STOP")  # Boşluklu metin ekle
@@ -791,6 +803,79 @@ class MenuSidebar(Sidebar):
         painter.end()
         return QIcon(pixmap)
     
+    def create_pbvs_icon(self):
+        """PBVS (Position-Based Visual Servoing) takibi için 3D koordinat sistemi ikonu oluştur."""
+        icon_size = QSize(24, 24)
+        pixmap = QPixmap(icon_size)
+        pixmap.fill(Qt.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # İkon merkezleme için referans noktası
+        center_x = 12
+        center_y = 12
+        
+        # Renk ayarları
+        if self.is_dark_theme:
+            axes_color = QColor(220, 220, 220)  # Beyaz tona yakın
+            x_color = QColor(255, 100, 100)     # Kırmızı
+            y_color = QColor(100, 255, 100)     # Yeşil
+            z_color = QColor(100, 100, 255)     # Mavi
+        else:
+            axes_color = QColor(60, 60, 60)     # Siyah tona yakın
+            x_color = QColor(200, 50, 50)       # Kırmızı
+            y_color = QColor(50, 200, 50)       # Yeşil
+            z_color = QColor(50, 50, 200)       # Mavi
+        
+        # 3B koordinat sistemi çiz (izometrik perspektifli)
+        # X ekseni (sağa)
+        painter.setPen(QPen(x_color, 1.8))
+        painter.drawLine(center_x, center_y, center_x + 10, center_y)
+        
+        # X ekseni ok başı
+        points_x = [
+            QPoint(center_x + 10, center_y), 
+            QPoint(center_x + 7, center_y - 2),
+            QPoint(center_x + 7, center_y + 2),
+        ]
+        painter.setBrush(x_color)
+        painter.drawPolygon(points_x)
+        
+        # Y ekseni (yukarı)
+        painter.setPen(QPen(y_color, 1.8))
+        painter.drawLine(center_x, center_y, center_x, center_y - 10)
+        
+        # Y ekseni ok başı
+        points_y = [
+            QPoint(center_x, center_y - 10), 
+            QPoint(center_x - 2, center_y - 7),
+            QPoint(center_x + 2, center_y - 7),
+        ]
+        painter.setBrush(y_color)
+        painter.drawPolygon(points_y)
+        
+        # Z ekseni (derinlik - sol alt)
+        painter.setPen(QPen(z_color, 1.8))
+        painter.drawLine(center_x, center_y, center_x - 7, center_y + 7)
+        
+        # Z ekseni ok başı
+        points_z = [
+            QPoint(center_x - 7, center_y + 7),
+            QPoint(center_x - 4, center_y + 5),
+            QPoint(center_x - 7, center_y + 4),
+        ]
+        painter.setBrush(z_color)
+        painter.drawPolygon(points_z)
+        
+        # Merkez nokta
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(axes_color)
+        painter.drawEllipse(QRect(center_x - 2, center_y - 2, 4, 4))
+        
+        painter.end()
+        return QIcon(pixmap)
+    
     def create_icon_button(self, text, icon_path_or_icon, checkable=False, icon_only=False):
         """Create a button with a theme-aware icon."""
         button = QPushButton(text)
@@ -1043,6 +1128,11 @@ class MenuSidebar(Sidebar):
         tracking_icon = self.create_tracking_icon()
         self.tracking_button.setIcon(tracking_icon)
         self.button_icons[self.tracking_button] = tracking_icon
+        
+        # PBVS ikonunu güncelle
+        pbvs_icon = self.create_pbvs_icon()
+        self.pbvs_tracking_button.setIcon(pbvs_icon)
+        self.button_icons[self.pbvs_tracking_button] = pbvs_icon
         
         # Update all button icons and text spacing
         for button in self.buttons:

@@ -124,9 +124,12 @@ class MainWindow(QMainWindow):
         self.menu_sidebar.engagement_dl_button.clicked.connect(self.on_engagement_dl_clicked)
         self.menu_sidebar.engagement_hybrid_button.clicked.connect(self.on_engagement_hybrid_clicked)
         self.menu_sidebar.engagement_board_button.clicked.connect(self.on_engagement_board_clicked)
-        self.menu_sidebar.theme_button.clicked.connect(self.toggle_theme)
+        self.menu_sidebar.tracking_button.clicked.connect(self.on_tracking_clicked)
+        self.menu_sidebar.pbvs_tracking_button.clicked.connect(self.on_pbvs_tracking_clicked)
+        self.menu_sidebar.servo_control_button.clicked.connect(self.on_servo_control_clicked)
         self.menu_sidebar.exit_button.clicked.connect(self.on_exit_clicked)
         self.menu_sidebar.emergency_stop_button.clicked.connect(self.on_emergency_stop_clicked)
+        self.menu_sidebar.theme_button.clicked.connect(self.toggle_theme)
         self.menu_sidebar.tracking_button.clicked.connect(self.on_tracking_clicked)
         self.menu_sidebar.servo_control_button.clicked.connect(self.on_servo_control_clicked)
         
@@ -590,14 +593,14 @@ class MainWindow(QMainWindow):
         camera_connected = hasattr(self, 'camera_service') and self.camera_service.is_running
         self.system_status_panel.updateCameraStatus(camera_connected)
         
-        # Arduino status
-        arduino_connected = hasattr(self, 'pan_tilt_service') and self.pan_tilt_service.is_connected
+        # Arduino status - check the ServoControlService
+        arduino_connected = hasattr(self, 'servo_service') and self.servo_service.is_connected
         self.system_status_panel.updateArduinoStatus(arduino_connected)
         
         # Weapon status - Always set to false as it's not implemented yet
         self.system_status_panel.updateWeaponStatus(False)
         
-        # Legacy status updates - kept for backward compatibility
+        # Detector status - check all detector services
         detector_active = hasattr(self, 'balloon_detector') and hasattr(self.balloon_detector, 'is_running') and self.balloon_detector.is_running
         if not detector_active:
             # Check other detectors
@@ -607,8 +610,9 @@ class MainWindow(QMainWindow):
                     break
         self.system_status_panel.updateDetectorStatus(detector_active)
         
-        # Tracking status
-        tracking_active = hasattr(self, 'pan_tilt_service') and hasattr(self.pan_tilt_service, 'is_tracking') and self.pan_tilt_service.is_tracking
+        # Tracking status - check both IBVS and PBVS tracking
+        tracking_active = (hasattr(self, 'pan_tilt_service') and hasattr(self.pan_tilt_service, 'is_tracking') and self.pan_tilt_service.is_tracking) or \
+                         (hasattr(self, 'pbvs_service') and hasattr(self.pbvs_service, 'is_tracking') and self.pbvs_service.is_tracking)
         self.system_status_panel.updateTrackingStatus(tracking_active)
     
     def refresh_log_sidebar(self):
@@ -864,35 +868,57 @@ class MainWindow(QMainWindow):
 
     def _stop_all_detection_services(self):
         """Stop all active detection services."""
-        # Stop balloon detector if active
+        # Stop YOLO balloon detector if active
         if hasattr(self, 'balloon_detector') and self.balloon_detector:
             self.balloon_detector.stop()
-            self.logger.info("Balon dedektör servisi durduruldu")
-            # Tamamen kaldır
-            delattr(self, 'balloon_detector')
+            self.balloon_detector = None
+            self.logger.info("Balon dedektörü durduruldu")
+        
+        # Stop classic balloon detector if active
+        if hasattr(self, 'balloon_classic_detector') and self.balloon_classic_detector:
+            self.balloon_classic_detector.stop()
+            self.balloon_classic_detector = None
+            self.logger.info("Klasik balon dedektörü durduruldu")
             
-        # Stop friend/foe detector if active
+        # Stop friend-foe detector if active
         if hasattr(self, 'friend_foe_detector') and self.friend_foe_detector:
             self.friend_foe_detector.stop()
-            self.logger.info("Dost/Düşman dedektör servisi durduruldu")
+            self.friend_foe_detector = None
+            self.logger.info("Dost/Düşman dedektörü durduruldu")
+            
+        # Stop classic friend-foe detector if active
+        if hasattr(self, 'friend_foe_classic_detector') and self.friend_foe_classic_detector:
+            self.friend_foe_classic_detector.stop()
+            self.friend_foe_classic_detector = None
+            self.logger.info("Klasik Dost/Düşman dedektörü durduruldu")
             
         # Stop engagement detector if active
         if hasattr(self, 'engagement_detector') and self.engagement_detector:
             self.engagement_detector.stop()
-            self.logger.info("Angajman dedektör servisi durduruldu")
+            self.engagement_detector = None
+            self.logger.info("Angajman modu dedektörü durduruldu")
             
         # Stop engagement board detector if active
         if hasattr(self, 'engagement_board_detector') and self.engagement_board_detector:
             self.engagement_board_detector.stop()
-            self.logger.info("Angajman tahtası dedektör servisi durduruldu")
+            self.engagement_board_detector = None
+            self.logger.info("Angajman tahtası dedektörü durduruldu")
             
-        # Stop mock service if active
-        if hasattr(self, 'mock_detector') and self.mock_detector:
-            self.mock_detector.stop()
-            self.logger.info("Mock dedektör servisi durduruldu")
+        # Stop IBVS tracking if active
+        if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service and self.pan_tilt_service.is_tracking:
+            self.pan_tilt_service.stop_tracking()
+            self.logger.info("IBVS Balon takibi durduruldu")
+            self.menu_sidebar.tracking_button.setChecked(False)
             
-        # Update detector status indicator
+        # Stop PBVS tracking if active
+        if hasattr(self, 'pbvs_service') and self.pbvs_service and self.pbvs_service.is_tracking:
+            self.pbvs_service.stop_tracking()
+            self.logger.info("PBVS Balon takibi durduruldu")
+            self.menu_sidebar.pbvs_tracking_button.setChecked(False)
+            
+        # Update detection status in UI
         self.system_status_panel.updateDetectorStatus(False)
+        self.system_status_panel.updateTrackingStatus(False)
 
     def on_balloon_dl_clicked(self):
         """Handle balloon detection with deep learning button click."""
@@ -1222,15 +1248,10 @@ class MainWindow(QMainWindow):
                 return
             
             # Eğer zaten bağlıysa tekrar bağlanmaya çalışma
-            if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service.is_connected:
+            if hasattr(self, 'servo_service') and self.servo_service.is_connected:
                 self.logger.info("Arduino zaten bağlı, takip başlatılıyor")
                 # Connect the pan_tilt service to the balloon detector
                 self.pan_tilt_service.set_balloon_detector(self.balloon_detector)
-                
-                # Update frame dimensions
-                if hasattr(self, 'camera_service') and self.camera_service:
-                    width, height = self.camera_service.get_frame_dimensions()
-                    self.pan_tilt_service.set_frame_center(width, height)
                 
                 # Start tracking
                 self.pan_tilt_service.start_tracking()
@@ -1283,7 +1304,7 @@ class MainWindow(QMainWindow):
             connection_thread.join(0.5)
             
             # Check if connection successful
-            success = hasattr(self, 'pan_tilt_service') and self.pan_tilt_service.is_connected
+            success = hasattr(self, 'servo_service') and self.servo_service.is_connected
             
             if not success:
                 # If connection failed, uncheck the button
@@ -1305,11 +1326,6 @@ class MainWindow(QMainWindow):
             # Connect the pan_tilt service to the balloon detector
             self.pan_tilt_service.set_balloon_detector(self.balloon_detector)
             
-            # Update frame dimensions
-            if hasattr(self, 'camera_service') and self.camera_service:
-                width, height = self.camera_service.get_frame_dimensions()
-                self.pan_tilt_service.set_frame_center(width, height)
-            
             # Start tracking
             self.pan_tilt_service.start_tracking()
             self.logger.info("Balon takibi başlatıldı")
@@ -1322,32 +1338,31 @@ class MainWindow(QMainWindow):
     def _connect_arduino(self):
         """Connection function to run in a background thread."""
         try:
-            if hasattr(self, 'pan_tilt_service'):
-                self.pan_tilt_service.connect()
+            if hasattr(self, 'servo_service'):
+                self.servo_service.connect()
         except Exception as e:
             self.logger.error(f"Arduino bağlantı thread'inde hata: {str(e)}")
-
+            
     def init_pan_tilt_service(self):
         """Initialize the PanTiltService."""
-        # Create new PanTiltService instance
-        self.pan_tilt_service = PanTiltService()
+        # Get the singleton ServoControlService instance
+        from services.servo_control_service import ServoControlService
+        self.servo_service = ServoControlService.get_instance()
         
         # Configure servo limits from config if needed
         if hasattr(config, 'pan_min_angle'):
-            self.pan_tilt_service.pan_min = config.pan_min_angle
-        if hasattr(config, 'pan_max_angle'):
-            self.pan_tilt_service.pan_max = config.pan_max_angle
-        if hasattr(config, 'tilt_min_angle'):
-            self.pan_tilt_service.tilt_min = config.tilt_min_angle
-        if hasattr(config, 'tilt_max_angle'):
-            self.pan_tilt_service.tilt_max = config.tilt_max_angle
-            
-        # Configure center positions if available
-        if hasattr(config, 'pan_center') and hasattr(config, 'tilt_center'):
-            self.pan_tilt_service.pan_angle = config.pan_center
-            self.pan_tilt_service.tilt_angle = config.tilt_center
-            self.pan_tilt_service.target_pan = config.pan_center
-            self.pan_tilt_service.target_tilt = config.tilt_center
+            self.servo_service.set_limits(
+                config.pan_min_angle,
+                config.pan_max_angle,
+                config.tilt_min_angle,
+                config.tilt_max_angle
+            )
+        
+        # Connect the servo service connection status signal
+        self.servo_service.connection_status_changed.connect(self.on_arduino_connection_changed)
+        
+        # Create new PanTiltService instance that will use the servo service
+        self.pan_tilt_service = PanTiltService()
         
         # Connect the pan_tilt_service to the camera_service for visualization
         if hasattr(self, 'camera_service') and self.camera_service:
@@ -1356,11 +1371,315 @@ class MainWindow(QMainWindow):
             # Update frame dimensions
             width, height = self.camera_service.get_frame_dimensions()
             self.pan_tilt_service.set_frame_center(width, height)
-        
-        # Connect signal for connection status changes
-        self.pan_tilt_service.connection_status_changed.connect(self.on_arduino_connection_changed)
             
         self.logger.info("PanTilt servisi başlatıldı (Gelişmiş IBVS ile)")
+        
+    def _auto_connect_arduino(self):
+        """Automatically connect to Arduino in background thread."""
+        # Give UI time to initialize properly
+        time.sleep(1)
+        
+        # Try to connect if not already connected
+        if hasattr(self, 'servo_service') and not self.servo_service.is_connected:
+            self.logger.info(f"Arduino otomatik bağlantı deneniyor: {config.pan_tilt_serial_port}")
+            success = self.servo_service.connect()
+            
+            if success:
+                self.logger.info("Arduino otomatik bağlantı başarılı")
+                # Update system status
+                QMetaObject.invokeMethod(self.system_status_panel, "updateArduinoStatus", 
+                                      Qt.QueuedConnection, Q_ARG(bool, True))
+            else:
+                self.logger.warning(f"Arduino otomatik bağlantı başarısız: {config.pan_tilt_serial_port}")
+                # Update system status
+                QMetaObject.invokeMethod(self.system_status_panel, "updateArduinoStatus", 
+                                      Qt.QueuedConnection, Q_ARG(bool, False))
+                                      
+    def init_pbvs_service(self):
+        """Initialize the PBVSService."""
+        # Import the service
+        from services.pbvs_service import PBVSService
+        
+        # Create new PBVSService instance that will use the shared servo service
+        self.pbvs_service = PBVSService()
+        
+        # Connect the pbvs_service to the camera_service for visualization
+        if hasattr(self, 'camera_service') and self.camera_service:
+            self.camera_service.set_pbvs_service(self.pbvs_service)
+            
+            # Update frame dimensions
+            width, height = self.camera_service.get_frame_dimensions()
+            self.pbvs_service.set_frame_center(width, height)
+            
+        self.logger.info("PBVS servisi başlatıldı (3D takip aktif)")
+        
+    def on_pbvs_tracking_clicked(self):
+        """Handle PBVS tracking button click."""
+        is_active = self.menu_sidebar.pbvs_tracking_button.isChecked()
+        
+        if is_active:
+            # Make sure balloon detection is active
+            if not hasattr(self, 'balloon_detector') or not self.balloon_detector:
+                # No balloon detector active, show error and uncheck button
+                self.menu_sidebar.pbvs_tracking_button.setChecked(False)
+                QMessageBox.warning(self, "PBVS Takip Hatası", 
+                                  "PBVS Takip için balon dedektörü aktif değil. Önce 'Hareketli Balon Modu (Derin Öğrenmeli)' modunu etkinleştirin.")
+                # Update status indicators
+                self.system_status_panel.updateTrackingStatus(False)
+                return
+            
+            # Check if ServoControlService is already connected to Arduino
+            if hasattr(self, 'servo_service') and self.servo_service.is_connected:
+                self.logger.info("Arduino bağlantısı zaten aktif, PBVS takip başlatılıyor")
+                
+                # Initialize PBVS service if needed
+                if not hasattr(self, 'pbvs_service') or not self.pbvs_service:
+                    self.init_pbvs_service()
+                
+                # Connect the pbvs_service to the balloon detector
+                self.pbvs_service.set_balloon_detector(self.balloon_detector)
+                
+                # Start tracking
+                self.pbvs_service.start_tracking()
+                self.logger.info("PBVS balon takibi başlatıldı")
+                
+                # Update status indicator
+                self.system_status_panel.updateTrackingStatus(True)
+                
+                # Ensure the IBVS tracking is disabled to avoid conflicts
+                if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service.is_tracking:
+                    self.pan_tilt_service.stop_tracking()
+                    self.menu_sidebar.tracking_button.setChecked(False)
+                    self.logger.info("IBVS takibi durduruldu (PBVS aktif edildiği için)")
+                
+                return
+            
+            # If no existing Arduino connection, initialize and connect
+            if not hasattr(self, 'servo_service'):
+                # Get the singleton ServoControlService instance
+                from services.servo_control_service import ServoControlService
+                self.servo_service = ServoControlService.get_instance()
+                
+                # Configure servo limits from config if needed
+                if hasattr(config, 'pan_min_angle'):
+                    self.servo_service.set_limits(
+                        config.pan_min_angle,
+                        config.pan_max_angle,
+                        config.tilt_min_angle,
+                        config.tilt_max_angle
+                    )
+                
+                # Connect the servo service connection status signal
+                self.servo_service.connection_status_changed.connect(self.on_arduino_connection_changed)
+                
+            # If no pbvs service, initialize it
+            if not hasattr(self, 'pbvs_service') or not self.pbvs_service:
+                self.init_pbvs_service()
+                
+            # Show connection dialog
+            connecting_dialog = QMessageBox(self)
+            connecting_dialog.setWindowTitle("Arduino Bağlantısı")
+            connecting_dialog.setIcon(QMessageBox.Information)
+            connecting_dialog.setText(f"PBVS için Arduino ile bağlantı kuruluyor: {config.pan_tilt_serial_port}")
+            connecting_dialog.setInformativeText("Lütfen bekleyin...")
+            connecting_dialog.setStandardButtons(QMessageBox.Cancel)
+            
+            # Show dialog without blocking (modeless)
+            connecting_dialog.show()
+            
+            # Update UI to process dialog
+            QApplication.processEvents()
+            
+            # Create a timer for timeout
+            connection_timer = QTimer()
+            connection_timeout = False
+            
+            def on_timeout():
+                nonlocal connection_timeout
+                connection_timeout = True
+                connecting_dialog.reject()
+            
+            # Set timeout to 5 seconds
+            connection_timer.setSingleShot(True)
+            connection_timer.timeout.connect(on_timeout)
+            connection_timer.start(5000)  # 5 seconds timeout
+                
+            # Connect to Arduino - use a background thread to avoid UI freezing
+            connection_thread = threading.Thread(target=self._connect_arduino)
+            connection_thread.daemon = True
+            connection_thread.start()
+            
+            # Wait for dialog to close (when user cancels or connection completes)
+            result = connecting_dialog.exec_()
+            
+            # Stop the timer
+            connection_timer.stop()
+            
+            # Wait for the connection thread to finish (with a short timeout)
+            connection_thread.join(0.5)
+            
+            # Check if connection successful
+            success = hasattr(self, 'servo_service') and self.servo_service.is_connected
+            
+            if not success:
+                # If connection failed, uncheck the button
+                self.menu_sidebar.pbvs_tracking_button.setChecked(False)
+                
+                # Show appropriate error message
+                if connection_timeout:
+                    QMessageBox.critical(self, "Bağlantı Hatası", 
+                                      f"Arduino bağlantısı zaman aşımına uğradı: {config.pan_tilt_serial_port}\n\n"
+                                      "Bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.\n"
+                                      "Ayarlar menüsünden doğru COM portunu seçebilirsiniz.")
+                else:
+                    QMessageBox.critical(self, "Bağlantı Hatası", 
+                                      f"Pan-Tilt servoları ile bağlantı kurulamadı: {config.pan_tilt_serial_port}\n\n"
+                                      "Bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.\n"
+                                      "Ayarlar menüsünden doğru COM portunu seçebilirsiniz.")
+                return
+                
+            # Connect the pbvs_service to the balloon detector
+            self.pbvs_service.set_balloon_detector(self.balloon_detector)
+            
+            # Start tracking
+            self.pbvs_service.start_tracking()
+            self.logger.info("PBVS balon takibi başlatıldı")
+        else:
+            # Stop tracking
+            if hasattr(self, 'pbvs_service') and self.pbvs_service:
+                self.pbvs_service.stop_tracking()
+                self.logger.info("PBVS balon takibi durduruldu")
+                
+    def on_arduino_connection_changed(self, connected):
+        """Handle Arduino connection status changes."""
+        # Update status indicator
+        self.system_status_panel.updateArduinoStatus(connected)
+        
+        # Log the status change
+        if connected:
+            self.logger.info("Arduino bağlantısı kuruldu")
+        else:
+            self.logger.warning("Arduino bağlantısı kesildi")
+
+    def on_servo_control_clicked(self):
+        """Open the manual servo control dialog."""
+        from ui.servo_control_dialog import ServoControlDialog
+        
+        # Log the action
+        self.logger.info("Manuel servo kontrolü başlatılıyor")
+        
+        # Create and show the dialog
+        dialog = ServoControlDialog(self)
+        dialog.exec_()
+
+    def _stop_all_detection_services(self):
+        """Stop all active detection services."""
+        # Stop YOLO balloon detector if active
+        if hasattr(self, 'balloon_detector') and self.balloon_detector:
+            self.balloon_detector.stop()
+            self.balloon_detector = None
+            self.logger.info("Balon dedektörü durduruldu")
+        
+        # Stop classic balloon detector if active
+        if hasattr(self, 'balloon_classic_detector') and self.balloon_classic_detector:
+            self.balloon_classic_detector.stop()
+            self.balloon_classic_detector = None
+            self.logger.info("Klasik balon dedektörü durduruldu")
+            
+        # Stop friend-foe detector if active
+        if hasattr(self, 'friend_foe_detector') and self.friend_foe_detector:
+            self.friend_foe_detector.stop()
+            self.friend_foe_detector = None
+            self.logger.info("Dost/Düşman dedektörü durduruldu")
+            
+        # Stop classic friend-foe detector if active
+        if hasattr(self, 'friend_foe_classic_detector') and self.friend_foe_classic_detector:
+            self.friend_foe_classic_detector.stop()
+            self.friend_foe_classic_detector = None
+            self.logger.info("Klasik Dost/Düşman dedektörü durduruldu")
+            
+        # Stop engagement detector if active
+        if hasattr(self, 'engagement_detector') and self.engagement_detector:
+            self.engagement_detector.stop()
+            self.engagement_detector = None
+            self.logger.info("Angajman modu dedektörü durduruldu")
+            
+        # Stop engagement board detector if active
+        if hasattr(self, 'engagement_board_detector') and self.engagement_board_detector:
+            self.engagement_board_detector.stop()
+            self.engagement_board_detector = None
+            self.logger.info("Angajman tahtası dedektörü durduruldu")
+            
+        # Stop IBVS tracking if active
+        if hasattr(self, 'pan_tilt_service') and self.pan_tilt_service and self.pan_tilt_service.is_tracking:
+            self.pan_tilt_service.stop_tracking()
+            self.logger.info("IBVS Balon takibi durduruldu")
+            self.menu_sidebar.tracking_button.setChecked(False)
+            
+        # Stop PBVS tracking if active
+        if hasattr(self, 'pbvs_service') and self.pbvs_service and self.pbvs_service.is_tracking:
+            self.pbvs_service.stop_tracking()
+            self.logger.info("PBVS Balon takibi durduruldu")
+            self.menu_sidebar.pbvs_tracking_button.setChecked(False)
+            
+        # Update detection status in UI
+        self.system_status_panel.updateDetectorStatus(False)
+        self.system_status_panel.updateTrackingStatus(False)
+
+    def on_balloon_edge_clicked(self):
+        """Handle balloon detection with edge/contour methods button click."""
+        is_active = self.menu_sidebar.balloon_edge_button.isChecked()
+
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_edge_button)
+            self._stop_all_detection_services()
+
+        if is_active:
+            self.logger.info("Hareketli Balon Modu (Kenar/Kontur Yöntemi) aktif edildi")
+            # BalloonClassicService başlat
+            from services.balloon_classic_service import BalloonClassicService
+            self.balloon_edge_service = BalloonClassicService()
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.balloon_edge_service)
+            if not self.balloon_edge_service.initialize():
+                self.logger.error("Klasik balon tespit servisi başlatılamadı!")
+                return
+            self.balloon_edge_service.start()
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("balloon_edge")
+        else:
+            self.logger.info("Hareketli Balon Modu (Kenar/Kontur Yöntemi) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+            if hasattr(self, 'balloon_edge_service') and self.balloon_edge_service:
+                self.balloon_edge_service.stop()
+
+    def on_balloon_color_clicked(self):
+        """Handle balloon detection with color segmentation button click."""
+        is_active = self.menu_sidebar.balloon_color_button.isChecked()
+
+        # Uncheck other buttons
+        if is_active:
+            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_color_button)
+            self._stop_all_detection_services()
+
+        if is_active:
+            self.logger.info("Hareketli Balon Modu (Renk Segmentasyon) aktif edildi")
+            from services.balloon_color_service import BalloonColorService
+            self.balloon_color_service = BalloonColorService()
+            if hasattr(self, 'camera_service') and self.camera_service:
+                self.camera_service.set_detector_service(self.balloon_color_service)
+            if not self.balloon_color_service.initialize():
+                self.logger.error("Renk segmentasyon balon tespit servisi başlatılamadı!")
+                return
+            self.balloon_color_service.start()
+            self.camera_view.set_detection_active(True)
+            self.camera_view.set_detection_mode("balloon_color")
+        else:
+            self.logger.info("Hareketli Balon Modu (Renk Segmentasyon) devre dışı bırakıldı")
+            self.camera_view.set_detection_active(False)
+            if hasattr(self, 'balloon_color_service') and self.balloon_color_service:
+                self.balloon_color_service.stop()
 
     def on_engagement_board_clicked(self):
         """Handle engagement board button click."""
@@ -1442,100 +1761,23 @@ class MainWindow(QMainWindow):
         self.camera_view.set_detection_active(True)
         self.camera_view.set_detection_mode("engagement")
 
-    def on_balloon_edge_clicked(self):
-        """Handle balloon detection with edge/contour methods button click."""
-        is_active = self.menu_sidebar.balloon_edge_button.isChecked()
-
-        # Uncheck other buttons
-        if is_active:
-            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_edge_button)
-            self._stop_all_detection_services()
-
-        if is_active:
-            self.logger.info("Hareketli Balon Modu (Kenar/Kontur Yöntemi) aktif edildi")
-            # BalloonClassicService başlat
-            from services.balloon_classic_service import BalloonClassicService
-            self.balloon_edge_service = BalloonClassicService()
-            if hasattr(self, 'camera_service') and self.camera_service:
-                self.camera_service.set_detector_service(self.balloon_edge_service)
-            if not self.balloon_edge_service.initialize():
-                self.logger.error("Klasik balon tespit servisi başlatılamadı!")
-                return
-            self.balloon_edge_service.start()
-            self.camera_view.set_detection_active(True)
-            self.camera_view.set_detection_mode("balloon_edge")
-        else:
-            self.logger.info("Hareketli Balon Modu (Kenar/Kontur Yöntemi) devre dışı bırakıldı")
-            self.camera_view.set_detection_active(False)
-            if hasattr(self, 'balloon_edge_service') and self.balloon_edge_service:
-                self.balloon_edge_service.stop()
-
-    def on_balloon_color_clicked(self):
-        """Handle balloon detection with color segmentation button click."""
-        is_active = self.menu_sidebar.balloon_color_button.isChecked()
-
-        # Uncheck other buttons
-        if is_active:
-            self._uncheck_other_detection_buttons(self.menu_sidebar.balloon_color_button)
-            self._stop_all_detection_services()
-
-        if is_active:
-            self.logger.info("Hareketli Balon Modu (Renk Segmentasyon) aktif edildi")
-            from services.balloon_color_service import BalloonColorService
-            self.balloon_color_service = BalloonColorService()
-            if hasattr(self, 'camera_service') and self.camera_service:
-                self.camera_service.set_detector_service(self.balloon_color_service)
-            if not self.balloon_color_service.initialize():
-                self.logger.error("Renk segmentasyon balon tespit servisi başlatılamadı!")
-                return
-            self.balloon_color_service.start()
-            self.camera_view.set_detection_active(True)
-            self.camera_view.set_detection_mode("balloon_color")
-        else:
-            self.logger.info("Hareketli Balon Modu (Renk Segmentasyon) devre dışı bırakıldı")
-            self.camera_view.set_detection_active(False)
-            if hasattr(self, 'balloon_color_service') and self.balloon_color_service:
-                self.balloon_color_service.stop()
-
-    def on_servo_control_clicked(self):
-        """Open the manual servo control dialog."""
-        from ui.servo_control_dialog import ServoControlDialog
-        
-        # Log the action
-        self.logger.info("Manuel servo kontrolü başlatılıyor")
-        
-        # Create and show the dialog
-        dialog = ServoControlDialog(self)
-        dialog.exec_()
-
-    def _auto_connect_arduino(self):
-        """Automatically connect to Arduino in background thread."""
-        # Give UI time to initialize properly
-        time.sleep(1)
-        
-        # Try to connect if not already connected
-        if hasattr(self, 'pan_tilt_service') and not self.pan_tilt_service.is_connected:
-            self.logger.info(f"Arduino otomatik bağlantı deneniyor: {config.pan_tilt_serial_port}")
-            success = self.pan_tilt_service.connect()
-            
-            if success:
-                self.logger.info("Arduino otomatik bağlantı başarılı")
-                # Update system status
-                QMetaObject.invokeMethod(self.system_status_panel, "updateArduinoStatus", 
-                                      Qt.QueuedConnection, Q_ARG(bool, True))
-            else:
-                self.logger.warning(f"Arduino otomatik bağlantı başarısız: {config.pan_tilt_serial_port}")
-                # Update system status
-                QMetaObject.invokeMethod(self.system_status_panel, "updateArduinoStatus", 
-                                      Qt.QueuedConnection, Q_ARG(bool, False))
-
-    def on_arduino_connection_changed(self, connected):
-        """Handle Arduino connection status changes."""
-        # Update status indicator
-        self.system_status_panel.updateArduinoStatus(connected)
-        
-        # Log the status change
-        if connected:
-            self.logger.info("Arduino bağlantısı kuruldu")
-        else:
-            self.logger.warning("Arduino bağlantısı kesildi")
+    def connect_ui_signals(self):
+        """Connect UI signals to handler functions."""
+        # Connect sidebar buttons
+        self.menu_sidebar.balloon_dl_button.clicked.connect(self.on_balloon_dl_clicked)
+        self.menu_sidebar.balloon_classic_button.clicked.connect(self.on_balloon_classic_clicked)
+        self.menu_sidebar.friend_foe_dl_button.clicked.connect(self.on_friend_foe_dl_clicked)
+        self.menu_sidebar.friend_foe_classic_button.clicked.connect(self.on_friend_foe_classic_clicked)
+        self.menu_sidebar.balloon_edge_button.clicked.connect(self.on_balloon_edge_clicked)
+        self.menu_sidebar.balloon_color_button.clicked.connect(self.on_balloon_color_clicked)
+        self.menu_sidebar.engagement_dl_button.clicked.connect(self.on_engagement_dl_clicked)
+        self.menu_sidebar.engagement_hybrid_button.clicked.connect(self.on_engagement_hybrid_clicked)
+        self.menu_sidebar.engagement_board_button.clicked.connect(self.on_engagement_board_clicked)
+        self.menu_sidebar.tracking_button.clicked.connect(self.on_tracking_clicked)
+        self.menu_sidebar.pbvs_tracking_button.clicked.connect(self.on_pbvs_tracking_clicked)
+        self.menu_sidebar.servo_control_button.clicked.connect(self.on_servo_control_clicked)
+        self.menu_sidebar.settings_button.clicked.connect(self.on_settings_clicked)
+        self.menu_sidebar.save_button.clicked.connect(self.on_save_clicked)
+        self.menu_sidebar.exit_button.clicked.connect(self.on_exit_clicked)
+        self.menu_sidebar.emergency_stop_button.clicked.connect(self.on_emergency_stop_clicked)
+        self.log_sidebar.clear_button.clicked.connect(self.on_clear_log)

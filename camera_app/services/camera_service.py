@@ -215,6 +215,57 @@ class CameraService(QObject):
                     # Apply IBVS visualization
                     if target_detection is not None:
                         frame = self.pan_tilt_service.draw_tracking_visualization(frame, target_detection)
+                
+                # Apply PBVS visualization if PBVS service is available and tracking
+                elif hasattr(self, 'pbvs_service') and self.pbvs_service and self.pbvs_service.is_tracking:
+                    # Convert detections to format expected by PBVS service
+                    pbvs_detections = []
+                    for detection in detections:
+                        # Format depends on the detector output format
+                        # Typically: [x1, y1, x2, y2, conf, class_id, object_id]
+                        if len(detection) >= 4:  # Ensure at least bbox coords
+                            x1, y1, x2, y2 = detection[0:4]
+                            conf = detection[4] if len(detection) > 4 else 0.0
+                            class_id = detection[5] if len(detection) > 5 else 0
+                            object_id = detection[6] if len(detection) > 6 else None
+                            
+                            # Calculate center and dimensions
+                            center_x = (x1 + x2) / 2
+                            center_y = (y1 + y2) / 2
+                            width = x2 - x1
+                            height = y2 - y1
+                            
+                            # Create detection dict
+                            pbvs_detection = {
+                                "center_x": center_x,
+                                "center_y": center_y,
+                                "width": width,
+                                "height": height,
+                                "confidence": conf,
+                                "class_id": class_id,
+                                "id": object_id
+                            }
+                            pbvs_detections.append(pbvs_detection)
+                    
+                    # Set detections in PBVS service
+                    self.pbvs_service.set_detections(pbvs_detections)
+                    
+                    # Get the target detection based on target_id
+                    target_detection = None
+                    target_id = self.pbvs_service.target_id
+                    
+                    if target_id is not None:
+                        # Find specific target ID
+                        for detection in pbvs_detections:
+                            if detection["id"] == target_id:
+                                target_detection = detection
+                                break
+                    elif pbvs_detections:
+                        # Just use the first detection if no specific target
+                        target_detection = pbvs_detections[0]
+                    
+                    # Apply PBVS visualization
+                    frame = self.pbvs_service.draw_tracking_visualization(frame, target_detection)
             
             # Draw FPS counter (after all processing)
             frame = self._draw_fps(frame)
@@ -334,6 +385,16 @@ class CameraService(QObject):
         pan_tilt_service.set_frame_center(width, height)
         
         self.logger.info(f"Pan-tilt service set in Camera Service")
+    
+    def set_pbvs_service(self, pbvs_service):
+        """Set the PBVS service for camera movement and position-based tracking."""
+        self.pbvs_service = pbvs_service
+        
+        # Update the frame center in the PBVS service
+        width, height = self.get_frame_dimensions()
+        pbvs_service.set_frame_center(width, height)
+        
+        self.logger.info(f"PBVS service set in Camera Service")
     
     def get_available_resolutions(self):
         """Get a list of common resolutions that might be supported by the camera.
