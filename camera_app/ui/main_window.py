@@ -849,6 +849,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'balloon_detector') and self.balloon_detector:
             self.balloon_detector.stop()
             self.logger.info("Balon dedektör servisi durduruldu")
+            # Tamamen kaldır
+            delattr(self, 'balloon_detector')
             
         # Stop friend/foe detector if active
         if hasattr(self, 'friend_foe_detector') and self.friend_foe_detector:
@@ -884,15 +886,16 @@ class MainWindow(QMainWindow):
         # This uses the balloon detector service
         if is_active:
             self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli + ByteTrack) aktif edildi")
-            self.init_yolo()  # Initialize balloon detector if needed
+            
+            # Yeniden başlatmaya hazırlanıyor - özel modeli kullanacağız
+            self.init_yolo()  # Initialize balloon detector with fresh instance
             self.camera_view.set_detection_active(True)
             self.camera_view.set_detection_mode("balloon")
         else:
             self.logger.info("Hareketli Balon Modu (Derin Öğrenmeli) devre dışı bırakıldı")
             self.camera_view.set_detection_active(False)
-            # Stop the service if it exists
-            if hasattr(self, 'balloon_detector') and self.balloon_detector:
-                self.balloon_detector.stop()
+            # Stop services
+            self._stop_all_detection_services()
 
     def on_balloon_classic_clicked(self):
         """Handle balloon detection with classical methods button click."""
@@ -1047,7 +1050,9 @@ class MainWindow(QMainWindow):
         """Initialize the YOLO service for balloon tracking."""
         if not hasattr(self, 'balloon_detector') or not self.balloon_detector:
             # Create balloon detector service
-            self.balloon_detector = BalloonDetectorService()
+            # Özel model dosyasını belirt
+            model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "bestv8m_100_640.pt")
+            self.balloon_detector = BalloonDetectorService(model_path=model_path)
             
             # Connect to camera service
             if hasattr(self, 'camera_service') and self.camera_service:
@@ -1062,7 +1067,7 @@ class MainWindow(QMainWindow):
             self.balloon_detector.use_kalman = True
             self.balloon_detector.show_kalman_debug = True
             
-            self.logger.info("Balon dedektör servisi ve Kalman filtresi başlatıldı")
+            self.logger.info(f"Balon dedektör servisi ve Kalman filtresi başlatıldı (Model: bestv8m_100_640.pt)")
             
         # Start service
         self.balloon_detector.start()
@@ -1196,7 +1201,7 @@ class MainWindow(QMainWindow):
                 # If connection failed, uncheck the button
                 self.menu_sidebar.tracking_button.setChecked(False)
                 QMessageBox.critical(self, "Bağlantı Hatası", 
-                                   "Pan-Tilt servoları ile bağlantı kurulamadı. COM4 bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
+                                   "Pan-Tilt servoları ile bağlantı kurulamadı. COM8 bağlantı noktasını ve Arduino'nun bağlı olduğunu kontrol edin.")
                 return
                 
             # Connect the pan_tilt service to the balloon detector if available
