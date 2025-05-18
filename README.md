@@ -1,4 +1,4 @@
-# Modern Kamera Uygulaması
+# Modern 2 DOF pan-tilt sistem
 
 ## Proje Genel Bakış ve Mimari Detaylar
 
